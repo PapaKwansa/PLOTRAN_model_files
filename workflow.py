@@ -211,7 +211,7 @@ def main() -> None:
     run([
         sys.executable, SCRIPT_DIR / "make_wellbore_vset.py", node_file, "wellbore.vset",
         "--center-x", "5000", "--center-y", "5000",
-        "--radius", "10", "--z-min", "532.5", "--z-max", "750.0",
+        "--radius", "10", "--z-min", "500.0", "--z-max", "535.0",
     ])
     must_exist(SCRIPT_DIR / "wellbore.vset", "wellbore.vset")
 

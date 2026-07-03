@@ -52,12 +52,12 @@ class GeologicalLayer:
     z_min: float
     z_max: float
 
-
-LAYERS: Tuple[GeologicalLayer, ...] = (
+# 1) replace the layer stack near the top with this
+LAYERS = (
     GeologicalLayer(1, 4, "underburden", 0.0, 200.0),
-    GeologicalLayer(2, 2, "bartlesville_sand", 200.0, 220.0),
-    GeologicalLayer(3, 3, "basal_layer", 220.0, 250.0),
-    GeologicalLayer(4, 1, "overburden", 250.0, 750.0),
+    GeologicalLayer(2, 3, "basal_layer", 200.0, 500.0),
+    GeologicalLayer(3, 2, "bartlesville_sand", 500.0, 535.0),
+    GeologicalLayer(4, 1, "overburden", 535.0, 750.0),
 )
 
 # -----------------------------------------------------------------------------
@@ -65,7 +65,7 @@ LAYERS: Tuple[GeologicalLayer, ...] = (
 # -----------------------------------------------------------------------------
 HEC_NAME = "bartlesville_hec"
 HEC_MATERIAL_ID = 5
-HEC_HOST_MATERIAL_ID = 1
+HEC_HOST_MATERIAL_ID = 2
 HEC_CENTER = np.array([5000.0, 5000.0, 530.0], dtype=float)
 HEC_LENGTH_M = 580.0
 HEC_WIDTH_M = 300.0
@@ -75,7 +75,7 @@ HEC_AZIMUTH_EAST_OF_NORTH_DEG = 5.0
 # -----------------------------------------------------------------------------
 # Matrix grid used to create the layered PLC.
 # -----------------------------------------------------------------------------
-MATRIX_COARSE_STEP_M = 500.0
+MATRIX_COARSE_STEP_M = 250.0
 ROTATED_TAG_LATTICE_STEP_M = 20.0
 X_FINE_START, X_FINE_END = 4800.0, 5200.0
 Y_FINE_START, Y_FINE_END = 4680.0, 5320.0
@@ -84,6 +84,16 @@ ROTATION_INNER_HALF_Y = 360.0
 ROTATION_OUTER_HALF_X = 800.0
 ROTATION_OUTER_HALF_Y = 1000.0
 
+
+# Local refinement windows: injector, HEC neighborhood, and strainmeters.
+# Replace the strainmeter boxes with your actual observation-point coordinates.
+REFINEMENT_WINDOWS = (
+    ("injector_core", 4987.5, 5012.5, 4987.5, 5012.5, 502.0, 533.0, 2.5, 2.5, 2.5),
+    ("avn31", 5330.0, 5370.0, 4710.0, 4750.0, 503.0, 532.0, 10.0, 10.0, 5.0),
+    ("avn2",  5140.0, 5180.0, 5175.0, 5195.0, 10.0, 60.0, 20.0, 10.0, 10.0),
+    ("avn87", 5440.0, 5480.0, 5175.0, 5195.0, 10.0, 60.0, 20.0, 10.0, 10.0),
+    ("central_bulk", 462.5, 562.5, 462.5, 562.5, 462.5, 562.5, 25.0, 25.0, 25.0),
+)
 # Vertical grading. The matrix levels include the HEC support planes z=527.5,
 # 530.0 and 532.5 so the tag-only HEC can be represented cleanly as a rotated
 # prism-like material zone without introducing internal PLC facets.
@@ -217,6 +227,42 @@ def rotate_matrix_xy(base_x: float, base_y: float) -> Tuple[float, float]:
 
 def unique_sorted(values: Iterable[float]) -> np.ndarray:
     return np.asarray(sorted({round(float(v), 9) for v in values}), dtype=float)
+
+def endpoint_values(start: float, stop: float, step: float) -> List[float]:
+    values = [float(start)]
+    current = float(start)
+    while current + step < stop - 1.0e-9:
+        current += step
+        values.append(current)
+    if not math.isclose(values[-1], stop, abs_tol=1.0e-9):
+        values.append(float(stop))
+    return values
+
+
+def add_box_lattice(
+    registry: PointRegistry,
+    x0: float, x1: float,
+    y0: float, y1: float,
+    z0: float, z1: float,
+    dx: float, dy: float, dz: float,
+) -> int:
+    xs = endpoint_values(x0, x1, dx)
+    ys = endpoint_values(y0, y1, dy)
+    zs = endpoint_values(z0, z1, dz)
+    count = 0
+    for z in zs:
+        for x in xs:
+            for y in ys:
+                registry.add((x, y, z))
+                count += 1
+    return count
+
+
+def add_hierarchical_refinement(registry: PointRegistry) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for name, x0, x1, y0, y1, z0, z1, dx, dy, dz in REFINEMENT_WINDOWS:
+        counts[name] = add_box_lattice(registry, x0, x1, y0, y1, z0, z1, dx, dy, dz)
+    return counts
 
 
 def inclusive_values(start: float, stop: float, step: float) -> List[float]:
@@ -427,6 +473,8 @@ def build_geometry(mesh_prefix: str) -> Path:
     facets: List[Facet] = []
 
     x_values, y_values = build_matrix_surface_plc(registry, facets)
+    refinement_counts = add_hierarchical_refinement(registry)
+    print("    local refinement counts:", refinement_counts)
     regions = (
         Region(np.array([5000.0, 5000.0, 500.0]), 1, "overburden"),
         Region(np.array([5000.0, 5000.0, 210.0]), 2, "bartlesville_sand"),

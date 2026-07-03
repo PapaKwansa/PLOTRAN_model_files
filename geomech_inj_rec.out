@@ -1,0 +1,648 @@
+
+================================
+  PFLOTRAN Development Version
+================================
+
+pflotran card:: GRID
+pflotran card:: NUMERICAL_METHODS
+pflotran card:: TIME
+pflotran card:: REFERENCE_PRESSURE
+"Reference Pressure units" set to default value.
+pflotran card:: MATERIAL_PROPERTY
+  Name :: overburden
+pflotran card:: MATERIAL_PROPERTY
+  Name :: bartlesville_sand
+pflotran card:: MATERIAL_PROPERTY
+  Name :: basal_layer
+pflotran card:: MATERIAL_PROPERTY
+  Name :: underburden
+pflotran card:: MATERIAL_PROPERTY
+  Name :: hec
+pflotran card:: CHARACTERISTIC_CURVES
+  Name :: default
+ WARNING: Mualem-van Genuchten relative permeability function is being used without SMOOTH option.
+pflotran card:: OUTPUT
+"OUTPUT,SNAPSHOT_FILE,FORMAT,HDF5" set to default value.
+pflotran card:: REGION
+All
+pflotran card:: REGION
+top
+pflotran card:: REGION
+bottom
+pflotran card:: REGION
+north
+pflotran card:: REGION
+south
+pflotran card:: REGION
+east
+pflotran card:: REGION
+west
+pflotran card:: REGION
+wellbore
+pflotran card:: FLOW_CONDITION
+initial
+pflotran card:: FLOW_CONDITION
+far_field_pressure
+pflotran card:: FLOW_CONDITION
+noflow
+pflotran card:: FLOW_CONDITION
+injection
+pflotran card:: INITIAL_CONDITION
+"Initial Condition name" set to default value.
+pflotran card:: SOURCE_SINK
+pflotran card:: BOUNDARY_CONDITION
+pflotran card:: BOUNDARY_CONDITION
+pflotran card:: BOUNDARY_CONDITION
+pflotran card:: BOUNDARY_CONDITION
+pflotran card:: BOUNDARY_CONDITION
+pflotran card:: BOUNDARY_CONDITION
+pflotran card:: STRATA
+pflotran card:: END_SUBSURFACE
+
+ *GEOMECH_GRAV
+  gravity    =  [m/s^2]     0.0000E+00  0.0000E+00  9.8100E+00
+word :: GEOMECHANICS_MAPPING_FILE
+word :: GEOMECHANICS_GRID
+word :: GEOMECHANICS_TIME
+word :: GEOMECHANICS_REGION
+overburden
+word :: GEOMECHANICS_REGION
+bartlesville_sand
+word :: GEOMECHANICS_REGION
+basal_layer
+word :: GEOMECHANICS_REGION
+underburden
+word :: GEOMECHANICS_REGION
+hec
+word :: GEOMECHANICS_REGION
+west
+word :: GEOMECHANICS_REGION
+east
+word :: GEOMECHANICS_REGION
+north
+word :: GEOMECHANICS_REGION
+south
+word :: GEOMECHANICS_REGION
+bottom
+word :: GEOMECHANICS_REGION
+top
+word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_STRATA
+word :: GEOMECHANICS_STRATA
+word :: GEOMECHANICS_STRATA
+word :: GEOMECHANICS_STRATA
+word :: GEOMECHANICS_STRATA
+word :: GEOMECHANICS_CONDITION
+west_roller
+word :: GEOMECHANICS_CONDITION
+east_roller
+word :: GEOMECHANICS_CONDITION
+north_roller
+word :: GEOMECHANICS_CONDITION
+south_roller
+word :: GEOMECHANICS_CONDITION
+bottom_fix
+word :: GEOMECHANICS_BOUNDARY_CONDITION
+word :: GEOMECHANICS_BOUNDARY_CONDITION
+word :: GEOMECHANICS_BOUNDARY_CONDITION
+word :: GEOMECHANICS_BOUNDARY_CONDITION
+word :: GEOMECHANICS_BOUNDARY_CONDITION
+word :: GEOMECHANICS_OUTPUT
+"GEOMECHANICS_OUTPUT,FORMAT,HDF5,# FILES" set to default value.
+
+Number of processes: 5
+
+Extent of Gridded Domain
+ X: 0.000000E+00 - 1.000000E+04
+ Y: 0.000000E+00 - 1.000000E+04
+ Z: 0.000000E+00 - 7.500000E+02
+
+Size of Gridded Domain
+ Number of grid cells: 71222
+ Maximum number of grid cells per process: 14670
+ Minimum number of grid cells per process: 13800
+
+Min/Max Cell Volumes [m^3]
+ Maximum: 9.898718E+07
+ Minimum: 9.375000E+00
+Opening hdf5 file: /home/kwesi/yaomesh/Pflotran_files_codes/./bartlesville_hec_material_ids.h5
+Setting up grid cell indices
+Opening group: Materials
+Reading dataset: Materials/Cell Ids
+  0.01 Seconds to set up indices
+Reading dataset: Materials/Material Ids
+  0.00 Seconds to read integer array.
+Closing group: Materials
+Closing hdf5 file: /home/kwesi/yaomesh/Pflotran_files_codes/./bartlesville_hec_material_ids.h5
+
+Number of active grid cells: 71222
+Number of inactive grid cells: 0
+
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Initial Condition
+
+--------------------------------------------------------------------------------
+          Flow Condition:   initial
+                  Region:   All
+--------------------------------------------------------------------------------
+
+  Flow Condition: initial
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+      Datum:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+
+    Sub Condition: pressure
+      Type: hydrostatic
+      Gradient:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Boundary Condition
+
+--------------------------------------------------------------------------------
+          Flow Condition:   far_field_pressure
+                  Region:   west
+--------------------------------------------------------------------------------
+
+  Flow Condition: far_field_pressure
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+      Datum:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+
+    Sub Condition: pressure
+      Type: hydrostatic
+      Gradient:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Boundary Condition
+
+--------------------------------------------------------------------------------
+          Flow Condition:   far_field_pressure
+                  Region:   east
+--------------------------------------------------------------------------------
+
+  Flow Condition: far_field_pressure
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+      Datum:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+
+    Sub Condition: pressure
+      Type: hydrostatic
+      Gradient:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Boundary Condition
+
+--------------------------------------------------------------------------------
+          Flow Condition:   far_field_pressure
+                  Region:   north
+--------------------------------------------------------------------------------
+
+  Flow Condition: far_field_pressure
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+      Datum:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+
+    Sub Condition: pressure
+      Type: hydrostatic
+      Gradient:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Boundary Condition
+
+--------------------------------------------------------------------------------
+          Flow Condition:   far_field_pressure
+                  Region:   south
+--------------------------------------------------------------------------------
+
+  Flow Condition: far_field_pressure
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+      Datum:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+
+    Sub Condition: pressure
+      Type: hydrostatic
+      Gradient:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  3
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Boundary Condition
+
+--------------------------------------------------------------------------------
+          Flow Condition:   noflow
+                  Region:   top
+--------------------------------------------------------------------------------
+
+  Flow Condition: noflow
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+      Datum:
+
+    Sub Condition: pressure
+      Type: neumann
+      Gradient:
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Boundary Condition
+
+--------------------------------------------------------------------------------
+          Flow Condition:   noflow
+                  Region:   bottom
+--------------------------------------------------------------------------------
+
+  Flow Condition: noflow
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+      Datum:
+
+    Sub Condition: pressure
+      Type: neumann
+      Gradient:
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Source/Sink
+
+--------------------------------------------------------------------------------
+          Flow Condition:   injection
+                  Region:   wellbore
+--------------------------------------------------------------------------------
+
+  Flow Condition: injection
+    Synchronize time with update: yes
+    Time units: yr
+    Length units: m
+      Datum:
+
+    Sub Condition: rate
+      Type: scaled volumetric rate
+      Gradient:
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Is transient?: yes
+          Number of times:      4
+          Is cyclic?: no
+          Buffer:
+            Rank:  2
+            Dims:    1   4
+            Buffer Slice Size:   0
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+Default HDF5 method is used in Initialization
+  Beginning setup of FLOW SNES
+ number of dofs =   1, number of phases =   1
+ mode = Richards: p
+  Finished setting up FLOW SNES
+
+ Requested processors =     5
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Geomech Boundary Condition
+
+--------------------------------------------------------------------------------
+          Geomech Condition:   west_roller
+                  Region:   west
+--------------------------------------------------------------------------------
+
+  Geomech Condition: west_roller
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+
+    Sub Condition: displacement_x
+      Type: dirichlet
+      Geomech Dataset:
+TODO(geh): add DatasetPrint()
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Geomech Boundary Condition
+
+--------------------------------------------------------------------------------
+          Geomech Condition:   east_roller
+                  Region:   east
+--------------------------------------------------------------------------------
+
+  Geomech Condition: east_roller
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+
+    Sub Condition: displacement_x
+      Type: dirichlet
+      Geomech Dataset:
+TODO(geh): add DatasetPrint()
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Geomech Boundary Condition
+
+--------------------------------------------------------------------------------
+          Geomech Condition:   north_roller
+                  Region:   north
+--------------------------------------------------------------------------------
+
+  Geomech Condition: north_roller
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+
+    Sub Condition: displacement_y
+      Type: dirichlet
+      Geomech Dataset:
+TODO(geh): add DatasetPrint()
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Geomech Boundary Condition
+
+--------------------------------------------------------------------------------
+          Geomech Condition:   south_roller
+                  Region:   south
+--------------------------------------------------------------------------------
+
+  Geomech Condition: south_roller
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+
+    Sub Condition: displacement_y
+      Type: dirichlet
+      Geomech Dataset:
+TODO(geh): add DatasetPrint()
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Geomech Boundary Condition
+
+--------------------------------------------------------------------------------
+          Geomech Condition:   bottom_fix
+                  Region:   bottom
+--------------------------------------------------------------------------------
+
+  Geomech Condition: bottom_fix
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+
+    Sub Condition: displacement_z
+      Type: dirichlet
+      Geomech Dataset:
+TODO(geh): add DatasetPrint()
+
+--------------------------------------------------------------------------------
+  Beginning setup of GEOMECH KSP
+  Finished setting up GEOMECH KSP
+
+FLOW Time Stepper SNES
+      maximum number of steps: 999999
+constant time steps threshold: 5
+       maximum number of cuts: 20
+             reduction factor: 5.000000E-01
+        maximum growth factor: 2.000000E+00
+                 acceleration: on
+       acceleration threshold: 5
+       number of ramp entries: 5
+                ramp entry #1: 2.0000
+                ramp entry #2: 2.0000
+                ramp entry #3: 2.0000
+                ramp entry #4: 2.0000
+                ramp entry #5: 2.0000
+                ramp entry #6: 1.8000
+                ramp entry #7: 1.6000
+                ramp entry #8: 1.4000
+                ramp entry #9: 1.2000
+               ramp entry #10: 1.0000
+               ramp entry #11: 1.0000
+               ramp entry #12: 1.0000
+               ramp entry #13: 1.0000
+
+FLOW Newton Solver
+                         atol: 1.000000E-50
+                         rtol: 1.000000E-08
+                         stol: 1.000000E-08
+                         dtol: 1.000000E+04
+                      maxnorm: 1.000000E+20
+                    inftolres: -9.990000E+02
+                    inftolupd: -9.990000E+02
+                 inftolrelupd: -9.990000E+02
+                 inftolsclres: -9.990000E+02
+                     max iter: 25
+                     min iter: 1
+                         maxf: 10000
+                  matrix type: baij
+         precond. matrix type: baij
+               inexact newton: off
+            print convergence: on
+   print detailed convergence: off
+          check infinity norm: on
+
+FLOW Linear Solver
+                       solver: bcgs
+               preconditioner: bjacobi
+                         atol: 1.000000E-50
+                         rtol: 1.000000E-05
+                         dtol: 1.000000E+04
+            maximum iteration: 10000
+
+GEOMECHANICS Time Stepper KSP
+      maximum number of steps: 999999
+constant time steps threshold: 5
+       maximum number of cuts: 16
+             reduction factor: 5.000000E-01
+        maximum growth factor: 2.000000E+00
+
+GEOMECHANICS Newton Solver
+                         atol: -2.000000E+00
+                         rtol: -2.000000E+00
+                         stol: -2.000000E+00
+                         dtol: -2.000000E+00
+                      maxnorm: 1.000000E+20
+                    inftolres: -9.990000E+02
+                    inftolupd: -9.990000E+02
+                 inftolrelupd: -9.990000E+02
+                 inftolsclres: -9.990000E+02
+                     max iter: -2
+                     min iter: 1
+                         maxf: -2
+                  matrix type: baij
+         precond. matrix type: baij
+               inexact newton: off
+            print convergence: on
+   print detailed convergence: off
+          check infinity norm: on
+
+GEOMECHANICS Linear Solver
+                       solver: bcgs
+               preconditioner:
+                         atol: 1.000000E-50
+                         rtol: 1.000000E-05
+                         dtol: 1.000000E+04
+            maximum iteration: 10000
+
+ --> creating hdf5 output file: /home/kwesi/yaomesh/Pflotran_files_codes/geomech_inj_rec.h5
+      0.03 Seconds to write HDF5 file.
+
+ Finished Initialization
+
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 2.01E+02 2x: 0.00E+00 2u: 0.00E+00 ir: 8.59E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 3.67E+01 2x: 1.07E+09 2u: 2.05E+04 ir: 1.78E+00 iu: 7.72E+02 rsn:   0
+  2 2r: 1.02E+01 2x: 1.07E+09 2u: 1.21E+03 ir: 4.94E-01 iu: 5.85E+01 rsn:   0
+  3 2r: 2.79E+00 2x: 1.07E+09 2u: 7.18E+02 ir: 1.36E-01 iu: 3.48E+01 rsn:   0
+  4 2r: 7.37E-01 2x: 1.07E+09 2u: 4.17E+02 ir: 3.58E-02 iu: 2.02E+01 rsn:   0
+  5 2r: 1.69E-01 2x: 1.07E+09 2u: 2.23E+02 ir: 8.19E-03 iu: 1.08E+01 rsn:   0
+  6 2r: 2.40E-02 2x: 1.07E+09 2u: 9.18E+01 ir: 1.17E-03 iu: 4.46E+00 rsn:   0
+  7 2r: 8.64E-04 2x: 1.07E+09 2u: 1.82E+01 ir: 4.21E-05 iu: 8.82E-01 rsn:   0
+  8 2r: 1.19E-05 2x: 1.07E+09 2u: 7.04E-01 ir: 1.02E-05 iu: 3.43E-02 rsn: stol
+
+ Step      1 Time=  2.40000E-05 Dt=  2.40000E-05 [hour] conv_reason: 4
+  newton =   8 [       8] linear =     8 [         8] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 8 / 8
+  --> SNES Residual: 0.118945E-04 0.167006E-09 0.101924E-04
+  --> max change: dpmx=   6.9609E+02
+
+== GEOMECHANICS ================================================================
+
+ Step      1 Time=  2.40000E-05 Dt=  2.40000E-05 [hour] conv_reason: 2
+  linear =   116 [       116] cuts =  0 [   0]
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 1.10E+08 2x: 0.00E+00 2u: 0.00E+00 ir: 4.80E+07 iu: 0.00E+00 rsn:   0
+  1 2r: 4.32E+10 2x: 3.68E+09 2u: 3.84E+09 ir: 1.36E+10 iu: 7.65E+07 rsn:   0
+  2 2r: 4.02E+10 2x: 5.10E+12 2u: 5.10E+12 ir: 1.54E+10 iu: 2.33E+11 rsn:   0
+  3 2r: 7.51E+11 2x: 6.81E+17 2u: 6.81E+17 ir: 5.24E+11 iu: 3.76E+17 rsn:   0
+  4 2r: 2.08E+20 2x: 6.66E+25 2u: 6.66E+25 -diverged
+ -> Cut time step: snes= -9 icut= 1 [1] t= 2.40000E-05 dt= 3.96000E-06 [hour]
+Newton solver reason: SNES_DIVERGED_DTOL
+  0 2r: 2.19E+08 2x: 0.00E+00 2u: 0.00E+00 ir: 9.61E+07 iu: 0.00E+00 rsn:   0
+  1 2r: 8.64E+10 2x: 3.68E+09 2u: 3.84E+09 ir: 2.73E+10 iu: 7.65E+07 rsn:   0
+  2 2r: 8.04E+10 2x: 5.11E+12 2u: 5.11E+12 ir: 3.08E+10 iu: 2.46E+11 rsn:   0
+  3 2r: 1.12E+12 2x: 8.22E+17 2u: 8.22E+17 ir: 8.68E+11 iu: 4.65E+17 rsn:   0
+  4 2r: 1.76E+23 2x: 5.64E+28 2u: 5.64E+28 -diverged
+ -> Cut time step: snes= -9 icut= 2 [2] t= 2.40000E-05 dt= 1.98000E-06 [hour]
+Newton solver reason: SNES_DIVERGED_DTOL
+  0 2r: 4.39E+08 2x: 0.00E+00 2u: 0.00E+00 ir: 1.92E+08 iu: 0.00E+00 rsn:   0
+  1 2r: 1.73E+11 2x: 3.68E+09 2u: 3.84E+09 ir: 5.45E+10 iu: 7.65E+07 rsn:   0
+  2 2r: 1.61E+11 2x: 5.11E+12 2u: 5.11E+12 ir: 6.16E+10 iu: 2.52E+11 rsn:   0
+  3 2r: 1.35E+12 2x: 9.10E+17 2u: 9.10E+17 ir: 1.08E+12 iu: 5.19E+17 rsn:   0
+  4 2r: 2.99E+14 2x: 9.60E+19 2u: 9.60E+19 -diverged
+ -> Cut time step: snes= -9 icut= 3 [3] t= 2.40000E-05 dt= 9.90000E-07 [hour]

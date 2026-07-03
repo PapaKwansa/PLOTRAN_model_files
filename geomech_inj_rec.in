@@ -73,7 +73,7 @@ MATERIAL_PROPERTY bartlesville_sand
   POROSITY 0.20
   CHARACTERISTIC_CURVES default
   PERMEABILITY
-    PERM_ISO 4.93d-15
+    PERM_ISO 5.d-14
   /
 END
 
@@ -103,7 +103,7 @@ MATERIAL_PROPERTY hec
   POROSITY 0.1
   CHARACTERISTIC_CURVES default
   PERMEABILITY
-    PERM_ISO 4.93d-13
+    PERM_ISO 5.d-13
   /
 END
 
@@ -217,11 +217,12 @@ FLOW_CONDITION injection
   RATE LIST
     TIME_UNITS hour
     DATA_UNITS m^3/s
-    0.d0   1.9d-3
-    19.d0  0.d0
+    0.d0    0.d0
+    0.05d0  1.9d-3
+    18.95d0 1.9d-3
+    19.d0   0.d0
   /
 END
-
 #------------------------------------------------------------------------------
 # Couplers
 #------------------------------------------------------------------------------
@@ -372,7 +373,7 @@ GEOMECHANICS
   # Fill in density, elastic moduli, Poisson ratio, and Biot coefficient.
   GEOMECHANICS_MATERIAL_PROPERTY hec
     ID 5
-    ROCK_DENSITY 2300
+    ROCK_DENSITY 2300.d0
     YOUNGS_MODULUS 9.0d9
     POISSONS_RATIO 0.25
     BIOT_COEFFICIENT 0.9

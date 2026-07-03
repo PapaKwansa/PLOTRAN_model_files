@@ -19,8 +19,8 @@ PARAMETERS
  
 MESH ATTRIBUTES
  =================================================================
-    Nodes:                                                   41040
-    Elements:                                               221760
+    Nodes:                                                   71222
+    Elements:                                               388741
     Element type:                                      tetrahedron
  
  =================================================================
@@ -34,4 +34,4 @@ MESH ATTRIBUTES
  > Computing mesh statistics...
  =================================================================
  
-Finished in 0.509 seconds.
+Finished in 0.886 seconds.
