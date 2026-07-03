@@ -1,37 +1,62 @@
 #!/usr/bin/env python3
-"""Assign material IDs, outer-boundary tags, and PFLOTRAN vsets.
+"""Assign material IDs, outer-boundary tags, and tag-only HEC vsets.
 
-Material 5 is the exact 580 m x 300 m horizontal HEC tag at z=530 m, rotated
-5 degrees east of north. Material 6 is the vertical grey injection borehole
-that reaches the HEC top. Materials 7--10 are the four green, shallow
-strainmeters far from the HEC footprint, occupying z=650--750 m.
+This updated version no longer expects any borehole mesh zones.
+The HEC is material 5 and is selected directly from the tag-only rotated
+matrix lattice. The small injection source region is handled later by
+make_wellbore_vset.py from the TetGen .node file.
 
-All borehole mesh zones are selected from radially graded local Part-1 polar
-lattices written by build_poly_layers4.py.
-
-Neither the HEC nor boreholes are TetGen holes or PLC surface entities.
+Outputs:
+  * <mesh>_materials.txt
+  * top/bottom/north/south/east/west.vset
+  * overburden/bartlesville_sand/basal_layer/underburden.vset
+  * hec.vset
+  * <mesh>_hec_tagged_nodes.xyz
+  * <mesh>_hec_tag_report.csv
 """
-
-from __future__ import annotations
 
 import argparse
 import csv
 import json
-import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, Iterable, Mapping, Tuple
 
 import numpy as np
 
-OUTER_FACE_MARKERS: Dict[int, str] = {1: "top", 2: "bottom", 3: "north", 4: "south", 5: "east", 6: "west"}
-BASE_MATERIAL_VSETS: Dict[int, str] = {1: "overburden", 2: "bartlesville_sand", 3: "basal_layer", 4: "underburden", 5: "hec"}
+OUTER_FACE_MARKERS: Dict[int, str] = {
+    1: "top",
+    2: "bottom",
+    3: "north",
+    4: "south",
+    5: "east",
+    6: "west",
+}
+
+BASE_MATERIAL_VSETS: Dict[int, str] = {
+    1: "overburden",
+    2: "bartlesville_sand",
+    3: "basal_layer",
+    4: "underburden",
+    5: "hec",
+}
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Write Bartlesville materials, boundaries, and vsets.")
-    parser.add_argument("mesh_prefix", help="Mesh prefix, e.g. bartlesville_hec")
-    parser.add_argument("--skip-px", action="store_true", help="Do not invoke px.py")
+    parser = argparse.ArgumentParser(
+        description="Write Bartlesville materials, boundaries, and HEC vsets."
+    )
+
+    parser.add_argument(
+        "mesh_prefix",
+        help="Mesh prefix, e.g. bartlesville_hec"
+    )
+
+    parser.add_argument(
+        "--skip-px",
+        action="store_true",
+        help="Do not invoke px.py"
+    )
+
     return parser.parse_args()
 
 
@@ -96,9 +121,12 @@ def pure_outer_face_masks(points: np.ndarray, domain: Mapping[str, object], tole
     west = np.isclose(x, minimum[0], atol=tolerance)
     hit_count = top.astype(int) + bottom.astype(int) + north.astype(int) + south.astype(int) + east.astype(int) + west.astype(int)
     return {
-        "top": top & (hit_count == 1), "bottom": bottom & (hit_count == 1),
-        "north": north & (hit_count == 1), "south": south & (hit_count == 1),
-        "east": east & (hit_count == 1), "west": west & (hit_count == 1),
+        "top": top & (hit_count == 1),
+        "bottom": bottom & (hit_count == 1),
+        "north": north & (hit_count == 1),
+        "south": south & (hit_count == 1),
+        "east": east & (hit_count == 1),
+        "west": west & (hit_count == 1),
     }
 
 
@@ -119,15 +147,6 @@ def strict_hec_mask(points: np.ndarray, hec: Mapping[str, object], tolerance: fl
         & (np.abs(local_length) <= 0.5 * float(hec["length_m"]) - 1.0e-9)
         & (np.abs(local_width) <= 0.5 * float(hec["width_m"]) - 1.0e-9)
     )
-
-
-def solid_borehole_mask(points: np.ndarray, borehole: Mapping[str, object], tolerance: float) -> np.ndarray:
-    center_x, center_y = (float(value) for value in borehole["center_xy"])
-    radius = float(borehole["radius_m"])
-    z_bottom = float(borehole["z_bottom_m"])
-    z_top = float(borehole["z_top_m"])
-    radial2 = (points[:, 0] - center_x) ** 2 + (points[:, 1] - center_y) ** 2
-    return (radial2 <= (radius + tolerance) ** 2) & (points[:, 2] >= z_bottom - tolerance) & (points[:, 2] <= z_top + tolerance)
 
 
 def write_hec_reports(prefix: str, points: np.ndarray, selected: np.ndarray, geometry: Mapping[str, object]) -> None:
@@ -152,28 +171,6 @@ def write_hec_reports(prefix: str, points: np.ndarray, selected: np.ndarray, geo
         writer.writerow(["maximum_local_length_m", f"{np.max(u):.10f}"])
         writer.writerow(["minimum_local_width_m", f"{np.min(v):.10f}"])
         writer.writerow(["maximum_local_width_m", f"{np.max(v):.10f}"])
-    with Path(f"{prefix}_hec_topview.csv").open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(["node_id", "x_m", "y_m", "z_m", "local_length_m", "local_width_m"])
-        for node_id, point, uu, vv in zip(selected + 1, points[selected], u, v):
-            writer.writerow([int(node_id), f"{point[0]:.10f}", f"{point[1]:.10f}", f"{point[2]:.10f}", f"{uu:.10f}", f"{vv:.10f}"])
-
-
-def write_borehole_report(prefix: str, points: np.ndarray, boreholes: list[dict], masks: Mapping[str, np.ndarray]) -> None:
-    with Path(f"{prefix}_borehole_tag_report.csv").open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(["name", "kind", "material_id", "color_hint", "radius_m", "bottom_z_m", "lattice_bottom_z_m", "target_top_z_m", "hec_local_u_m", "hec_local_v_m", "outside_hec_footprint", "contacts_hec", "tagged_node_count", "minimum_tagged_z_m", "maximum_tagged_z_m", "representation"])
-        for borehole in boreholes:
-            name = str(borehole["name"])
-            ids = np.where(masks[name])[0]
-            z_values = points[ids, 2]
-            uv = borehole.get("hec_local_uv_m", [float('nan'), float('nan')])
-            writer.writerow([
-                name, borehole["kind"], borehole["material_id"], borehole["color_hint"],
-                f"{float(borehole['radius_m']):.10f}", f"{float(borehole['z_bottom_m']):.10f}", f"{float(borehole.get('lattice_bottom_z_m', borehole['z_bottom_m'])):.10f}", f"{float(borehole['z_top_m']):.10f}",
-                f"{float(uv[0]):.10f}", f"{float(uv[1]):.10f}", borehole.get("outside_hec_footprint", False), borehole.get("contacts_hec", False),
-                int(ids.size), f"{np.min(z_values):.10f}", f"{np.max(z_values):.10f}", borehole["representation"],
-            ])
 
 
 def write_px_inputs(prefix: str, materials: np.ndarray, skip_px: bool) -> None:
@@ -189,8 +186,10 @@ def write_px_inputs(prefix: str, materials: np.ndarray, skip_px: bool) -> None:
         print("--> px.py not found; visualization inputs were written only.")
         return
     try:
+        import subprocess
+        import sys
         subprocess.run([sys.executable, "px.py", "-f", prefix, str(summary), "meshtags", "0.0", "tags"], check=True)
-    except subprocess.CalledProcessError as exc:
+    except Exception as exc:
         print(f"WARNING: px.py failed but tags were written: {exc}")
 
 
@@ -215,43 +214,12 @@ def main() -> None:
         raise RuntimeError("No material-5 HEC nodes found. The z=530 rotated lattice is missing.")
     materials[hec_mask] = int(geometry["hec"]["material_id"])
 
-    boreholes = list(geometry.get("boreholes", []))
-    if len(boreholes) != 5:
-        raise RuntimeError("Expected exactly five borehole definitions.")
-    masks: Dict[str, np.ndarray] = {}
-    occupied = np.zeros(points.shape[0], dtype=bool)
-    for borehole in boreholes:
-        name = str(borehole["name"])
-        mask = solid_borehole_mask(points, borehole, tolerance)
-        if not np.any(mask):
-            raise RuntimeError(f"No nodes were found in borehole mesh zone: {name}")
-        if np.any(mask & occupied):
-            raise RuntimeError(f"Borehole tags overlap: {name}")
-        masks[name] = mask
-        occupied |= mask
-        # Boreholes override any base material; they do not overlap the z=530 HEC tag.
-        materials[mask] = int(borehole["material_id"])
-
     np.savetxt(f"{prefix}_materials.txt", materials, fmt="%d")
     print(f"--> Wrote {prefix}_materials.txt")
 
     for material_id, name in BASE_MATERIAL_VSETS.items():
         count = write_vset(Path(f"{name}.vset"), np.where(materials == material_id)[0] + 1)
         print(f"    {name}.vset: {count} nodes")
-
-    borehole_union = np.zeros(points.shape[0], dtype=bool)
-    strainmeter_union = np.zeros(points.shape[0], dtype=bool)
-    for borehole in boreholes:
-        name = str(borehole["name"])
-        material_id = int(borehole["material_id"])
-        mask = materials == material_id
-        count = write_vset(Path(f"{name}.vset"), np.where(mask)[0] + 1)
-        print(f"    {name}.vset: {count} nodes")
-        borehole_union |= mask
-        if borehole["kind"] == "strainmeter":
-            strainmeter_union |= mask
-    print(f"    boreholes.vset: {write_vset(Path('boreholes.vset'), np.where(borehole_union)[0] + 1)} nodes")
-    print(f"    strainmeter_boreholes.vset: {write_vset(Path('strainmeter_boreholes.vset'), np.where(strainmeter_union)[0] + 1)} nodes")
 
     boundary_tags = np.full(points.shape[0], -999, dtype=int)
     face_masks = pure_outer_face_masks(points, geometry["domain"], tolerance)
@@ -264,14 +232,8 @@ def main() -> None:
     print(f"--> Wrote {prefix}_boundaries.txt")
 
     write_hec_reports(prefix, points, hec_ids, geometry)
-    write_borehole_report(prefix, points, boreholes, masks)
-    write_px_inputs(prefix, materials, args.skip_px)
     print(f"--> Wrote {prefix}_hec_tag_report.csv")
-    print(f"--> Wrote {prefix}_borehole_tag_report.csv")
-    print("\nMaterial ID distribution:")
-    values, counts = np.unique(materials, return_counts=True)
-    for value, count in zip(values, counts):
-        print(f"  material {value:>2}: {count}")
+    write_px_inputs(prefix, materials, args.skip_px)
     print("\nDone.\n")
 
 
