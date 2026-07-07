@@ -1,0 +1,16 @@
+label,z_min_m,z_max_m,vertical_thickness_m,geological_layer,note
+L1_bottom_coarse,0.000000,100.000000,100.000000,1,largest cells near lower external boundary
+L1_lower_transition,100.000000,160.000000,60.000000,1,transition toward refined beds
+L1_mid_transition,160.000000,185.000000,25.000000,1,transition toward refined beds
+L1_upper_transition,185.000000,200.000000,15.000000,1,matches fine spacing near layer 2
+L2_lower_refined,200.000000,210.000000,10.000000,2,refined near layer 3
+L2_upper_refined,210.000000,220.000000,10.000000,2,refined near layer 3
+L3_lower_refined,220.000000,235.000000,15.000000,3,layer 3 refined band
+L3_upper_refined,235.000000,250.000000,15.000000,3,layer 3 refined band
+L4_lower_refined,250.000000,350.000000,100.000000,4,coarsening upward
+L4_transition_1,350.000000,500.000000,150.000000,4,coarsening upward
+L4_hec_lower_matrix,500.000000,525.000000,25.000000,4,matrix plane below 5 m HEC support
+L4_hec_center_matrix,525.000000,530.000000,5.000000,4,matrix plane at HEC centre
+L4_hec_upper_matrix,530.000000,535.000000,5.000000,4,matrix plane above 5 m HEC support
+L4_transition_2,535.000000,650.000000,115.000000,4,coarsening upward
+L4_top_transition,650.000000,750.000000,100.000000,4,larger cells near upper external boundary
