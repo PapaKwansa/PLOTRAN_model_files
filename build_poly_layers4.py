@@ -105,7 +105,7 @@ STRAINMETER_MATERIAL_IDS = {
 # -----------------------------------------------------------------------------
 # Injection borehole tag and its local point cloud.
 # -----------------------------------------------------------------------------
-INJECTION_RADIUS_M = 0.25
+INJECTION_RADIUS_M = 1.0
 HEC_BOTTOM_Z_M = HEC_CENTER[2] - 0.5 * HEC_THICKNESS_M
 HEC_TOP_Z_M    = HEC_CENTER[2] + 0.5 * HEC_THICKNESS_M
 
@@ -120,7 +120,7 @@ INJECTION_LATTICE_Z_MAX_M = 748.5
 # Strainmeter data supplied by the user.  These are sensor locations, so the
 # mesh uses compact 3-D sensor pods rather than invented long vertical wells.
 # -----------------------------------------------------------------------------
-STRAINMETER_TAG_RADIUS_M = 0.25
+STRAINMETER_TAG_RADIUS_M = 1.0
 
 
 @dataclass(frozen=True)
