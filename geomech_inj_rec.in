@@ -257,15 +257,16 @@ END
 
 #------------------------------------------------------------------------------
 # Flow conditions
+# The depth increases upward in this new mesh
 #------------------------------------------------------------------------------
 FLOW_CONDITION initial
   TYPE
     LIQUID_PRESSURE HYDROSTATIC
   /
-  DATUM 0.d0 0.d0 0.d0
+  DATUM 0.d0 0.d0 750.d0
   LIQUID_PRESSURE 101325.d0
   GRADIENT
-    LIQUID_PRESSURE 0.d0 0.d0 9.81d3
+    LIQUID_PRESSURE 0.d0 0.d0 -9.81d3
   /
 END
 
@@ -273,10 +274,10 @@ FLOW_CONDITION far_field_pressure
   TYPE
     LIQUID_PRESSURE HYDROSTATIC
   /
-  DATUM 0.d0 0.d0 0.d0
+  DATUM 0.d0 0.d0 750.d0
   LIQUID_PRESSURE 101325.d0
   GRADIENT
-    LIQUID_PRESSURE 0.d0 0.d0 9.81d3
+    LIQUID_PRESSURE 0.d0 0.d0 -9.81d3
   /
 END
 
@@ -367,11 +368,11 @@ GEOMECHANICS
 
   GEOMECHANICS_GRID
     TYPE UNSTRUCTURED bartlesville_hec.ugi
-    GRAVITY 0.d0 0.d0 9.81d0
+    GRAVITY 0.d0 0.d0 -9.81d0
   END
 
   GEOMECHANICS_TIME
-    COUPLING_TIMESTEP_SIZE 1.d-4 hour
+    COUPLING_TIMESTEP_SIZE 0.01 hour
   END
 
   #------------------------------------------------------------------------------

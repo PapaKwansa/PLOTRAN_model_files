@@ -113,8 +113,8 @@ INJECTION_TAG_Z_MIN_M = HEC_BOTTOM_Z_M
 INJECTION_TAG_Z_MAX_M = DOMAIN_MAX[2]
 
 # put the local refinement inside the source interval
-INJECTION_LATTICE_Z_MIN_M = 527.75   # or 528.0
-INJECTION_LATTICE_Z_MAX_M = 748.5
+INJECTION_LATTICE_Z_MIN_M = 527.75  # or 528.0
+INJECTION_LATTICE_Z_MAX_M = 535.25
 
 # -----------------------------------------------------------------------------
 # Strainmeter data supplied by the user.  These are sensor locations, so the
