@@ -1,6 +1,11 @@
 # ============================================================
 # PFLOTRAN: FLOW + POROELASTIC GEOMECHANICS (INJECTION + RECOVERY)
-# Updated for bartlesville_hec mesh outputs
+# Updated for the new Bartlesville HEC mesh workflow
+# Uses:
+#   injection_borehole.vset
+#   AVN2.vset, AVN87.vset, AVN31.vset
+#   strainmeter_sensors.vset
+#   hec.vset
 # ============================================================
 
 SIMULATION
@@ -12,7 +17,8 @@ SIMULATION
     /
     SUBSURFACE_GEOMECHANICS geomech
       OPTIONS
-        FLOW_COUPLING TWO_WAY_COUPLED
+        FLOW_COUPLING ONE_WAY_COUPLED
+        # Change to TWO_WAY_COUPLED only after the one-way run is stable.
       /
     /
   /
@@ -35,15 +41,17 @@ END
 #------------------------------------------------------------------------------
 NUMERICAL_METHODS FLOW
   TIMESTEPPER
-    INITIAL_TIMESTEP_SIZE 1.d-6 day
-    MAXIMUM_TIMESTEP_SIZE 5.d-4 day
-    PRESSURE_CHANGE_GOVERNOR 5.d2
-    SATURATION_CHANGE_GOVERNOR 5.d-2
+    INITIAL_TIMESTEP_SIZE 1.d-9 day
+    MAXIMUM_TIMESTEP_SIZE 1.d-6 day
+    PRESSURE_CHANGE_GOVERNOR 1.d2
+    SATURATION_CHANGE_GOVERNOR 1.d-2
     TIMESTEP_REDUCTION_FACTOR 0.5d0
-    MAXIMUM_CONSECUTIVE_TS_CUTS 20
+    MAXIMUM_CONSECUTIVE_TS_CUTS 60
   /
   NEWTON_SOLVER
-    MAXIMUM_NUMBER_OF_ITERATIONS 25
+    MAXIMUM_NUMBER_OF_ITERATIONS 100
+    SNES_TYPE NTRDC
+    PRINT_LINEAR_ITERATIONS
   /
 END
 
@@ -61,49 +69,104 @@ REFERENCE_PRESSURE 5.3E6
 #------------------------------------------------------------------------------
 MATERIAL_PROPERTY overburden
   ID 1
-  POROSITY 0.08
+  POROSITY 0.1
   CHARACTERISTIC_CURVES default
   PERMEABILITY
-    PERM_ISO 5.d-18
+    PERM_X 9.869233d-18
+    PERM_Y 9.869233d-18
+    PERM_Z 9.869233d-19
   /
 END
 
 MATERIAL_PROPERTY bartlesville_sand
   ID 2
-  POROSITY 0.20
+  POROSITY 0.1
   CHARACTERISTIC_CURVES default
   PERMEABILITY
-    PERM_ISO 5.d-14
+    PERM_X 4.9346165d-15
+    PERM_Y 4.9346165d-15
+    PERM_Z 4.9346165d-17
   /
 END
 
 MATERIAL_PROPERTY basal_layer
   ID 3
-  POROSITY 0.06
+  POROSITY 0.1
   CHARACTERISTIC_CURVES default
   PERMEABILITY
-    PERM_ISO 2.d-18
+    PERM_X 9.869233d-18
+    PERM_Y 9.869233d-18
+    PERM_Z 9.869233d-19
   /
 END
 
 MATERIAL_PROPERTY underburden
   ID 4
-  POROSITY 0.08
+  POROSITY 0.1
   CHARACTERISTIC_CURVES default
   PERMEABILITY
-    PERM_ISO 5.d-18
+    PERM_X 9.869233d-18
+    PERM_Y 9.869233d-18
+    PERM_Z 9.869233d-19
   /
 END
 
-# >>> INSERT HEC FLOW PROPERTIES HERE <<<
-# The HEC is material ID 5 in bartlesville_hec_material_ids.h5.
-# Fill in porosity, permeability, and any HEC-specific curve settings below.
+# HEC: tag-only porous continuum lens
 MATERIAL_PROPERTY hec
   ID 5
   POROSITY 0.1
   CHARACTERISTIC_CURVES default
   PERMEABILITY
-    PERM_ISO 5.d-13
+    PERM_X 4.9346165d-13
+    PERM_Y 4.9346165d-13
+    PERM_Z 9.869233d-17
+  /
+END
+
+# Injection borehole tag region
+# Use host-like properties so the tag region does not introduce artificial contrast.
+MATERIAL_PROPERTY injection_borehole
+  ID 6
+  POROSITY 0.1
+  CHARACTERISTIC_CURVES default
+  PERMEABILITY
+    PERM_X 9.869233d-18
+    PERM_Y 9.869233d-18
+    PERM_Z 9.869233d-19
+  /
+END
+
+# Strainmeter sensor pods
+MATERIAL_PROPERTY AVN2
+  ID 7
+  POROSITY 0.1
+  CHARACTERISTIC_CURVES default
+  PERMEABILITY
+    PERM_X 9.869233d-18
+    PERM_Y 9.869233d-18
+    PERM_Z 9.869233d-19
+  /
+END
+
+MATERIAL_PROPERTY AVN87
+  ID 8
+  POROSITY 0.1
+  CHARACTERISTIC_CURVES default
+  PERMEABILITY
+    PERM_X 9.869233d-18
+    PERM_Y 9.869233d-18
+    PERM_Z 9.869233d-19
+  /
+END
+
+MATERIAL_PROPERTY AVN31
+  ID 9
+  POROSITY 0.1
+  CHARACTERISTIC_CURVES default
+  PERMEABILITY
+    PERM_X 9.869233d-18
+    PERM_Y 9.869233d-18
+    PERM_Z 9.869233d-19
   /
 END
 
@@ -123,7 +186,7 @@ CHARACTERISTIC_CURVES default
 END
 
 #------------------------------------------------------------------------------
-# Flow output (early injection window only)
+# Flow output
 #------------------------------------------------------------------------------
 OUTPUT
   ACKNOWLEDGE_VTK_FLAW
@@ -172,8 +235,24 @@ REGION west
   FILE west.ex
 END
 
-REGION wellbore
-  FILE wellbore.vset
+REGION injection_borehole
+  FILE injection_borehole.vset
+END
+
+REGION strainmeter_sensors
+  FILE strainmeter_sensors.vset
+END
+
+REGION AVN2
+  FILE AVN2.vset
+END
+
+REGION AVN87
+  FILE AVN87.vset
+END
+
+REGION AVN31
+  FILE AVN31.vset
 END
 
 #------------------------------------------------------------------------------
@@ -208,7 +287,6 @@ FLOW_CONDITION noflow
   LIQUID_FLUX 0.d0
 END
 
-# Injection: 0–19 h at 1.9e-3 m^3/s, then shut-in
 FLOW_CONDITION injection
   TYPE
     RATE SCALED_VOLUMETRIC_RATE VOLUME
@@ -217,12 +295,18 @@ FLOW_CONDITION injection
   RATE LIST
     TIME_UNITS hour
     DATA_UNITS m^3/s
-    0.d0    0.d0
-    0.05d0  1.9d-3
-    18.95d0 1.9d-3
-    19.d0   0.d0
+    0.d0     0.d0
+    0.01d0   1.d-4
+    0.05d0   2.d-4
+    0.10d0   5.d-4
+    0.50d0   1.d-3
+    1.00d0   1.5d-3
+    3.00d0   1.9d-3
+    18.95d0  1.9d-3
+    19.d0    0.d0
   /
 END
+
 #------------------------------------------------------------------------------
 # Couplers
 #------------------------------------------------------------------------------
@@ -233,7 +317,7 @@ END
 
 SOURCE_SINK inj
   FLOW_CONDITION injection
-  REGION wellbore
+  REGION injection_borehole
 END
 
 BOUNDARY_CONDITION west_bc
@@ -287,10 +371,12 @@ GEOMECHANICS
   END
 
   GEOMECHANICS_TIME
-    COUPLING_TIMESTEP_SIZE 0.01d0 hour
+    COUPLING_TIMESTEP_SIZE 1.d-4 hour
   END
 
-  # ---------------- Geomechanics regions ----------------------
+  #------------------------------------------------------------------------------
+  # Geomechanics regions
+  #------------------------------------------------------------------------------
   GEOMECHANICS_REGION overburden
     FILE overburden.vset
   END
@@ -309,6 +395,26 @@ GEOMECHANICS
 
   GEOMECHANICS_REGION hec
     FILE hec.vset
+  END
+
+  GEOMECHANICS_REGION injection_borehole
+    FILE injection_borehole.vset
+  END
+
+  GEOMECHANICS_REGION strainmeter_sensors
+    FILE strainmeter_sensors.vset
+  END
+
+  GEOMECHANICS_REGION AVN2
+    FILE AVN2.vset
+  END
+
+  GEOMECHANICS_REGION AVN87
+    FILE AVN87.vset
+  END
+
+  GEOMECHANICS_REGION AVN31
+    FILE AVN31.vset
   END
 
   GEOMECHANICS_REGION west
@@ -335,7 +441,9 @@ GEOMECHANICS
     FILE top.vset
   END
 
-  # ---------------- Geomechanics material properties ---------
+  #------------------------------------------------------------------------------
+  # Geomechanics material properties
+  #------------------------------------------------------------------------------
   GEOMECHANICS_MATERIAL_PROPERTY overburden
     ID 1
     ROCK_DENSITY 2700.d0
@@ -368,9 +476,6 @@ GEOMECHANICS
     BIOT_COEFFICIENT 0.7
   END
 
-  # >>> INSERT HEC GEOMECHANICS PROPERTIES HERE <<<
-  # The HEC is material ID 5 in bartlesville_hec_material_ids.h5.
-  # Fill in density, elastic moduli, Poisson ratio, and Biot coefficient.
   GEOMECHANICS_MATERIAL_PROPERTY hec
     ID 5
     ROCK_DENSITY 2300.d0
@@ -379,7 +484,41 @@ GEOMECHANICS
     BIOT_COEFFICIENT 0.9
   END
 
-  # ---------------- Geomechanics strata -----------------------
+  GEOMECHANICS_MATERIAL_PROPERTY injection_borehole
+    ID 6
+    ROCK_DENSITY 2700.d0
+    YOUNGS_MODULUS 2.0d10
+    POISSONS_RATIO 0.28
+    BIOT_COEFFICIENT 0.7
+  END
+
+  GEOMECHANICS_MATERIAL_PROPERTY AVN2
+    ID 7
+    ROCK_DENSITY 2700.d0
+    YOUNGS_MODULUS 2.0d10
+    POISSONS_RATIO 0.28
+    BIOT_COEFFICIENT 0.7
+  END
+
+  GEOMECHANICS_MATERIAL_PROPERTY AVN87
+    ID 8
+    ROCK_DENSITY 2700.d0
+    YOUNGS_MODULUS 2.0d10
+    POISSONS_RATIO 0.28
+    BIOT_COEFFICIENT 0.7
+  END
+
+  GEOMECHANICS_MATERIAL_PROPERTY AVN31
+    ID 9
+    ROCK_DENSITY 2700.d0
+    YOUNGS_MODULUS 2.0d10
+    POISSONS_RATIO 0.28
+    BIOT_COEFFICIENT 0.7
+  END
+
+  #------------------------------------------------------------------------------
+  # Geomechanics strata
+  #------------------------------------------------------------------------------
   GEOMECHANICS_STRATA
     GEOMECHANICS_REGION overburden
     GEOMECHANICS_MATERIAL overburden
@@ -405,7 +544,29 @@ GEOMECHANICS
     GEOMECHANICS_MATERIAL hec
   END
 
-  # ---------------- Boundary conditions ------------------------
+  GEOMECHANICS_STRATA
+    GEOMECHANICS_REGION injection_borehole
+    GEOMECHANICS_MATERIAL injection_borehole
+  END
+
+  GEOMECHANICS_STRATA
+    GEOMECHANICS_REGION AVN2
+    GEOMECHANICS_MATERIAL AVN2
+  END
+
+  GEOMECHANICS_STRATA
+    GEOMECHANICS_REGION AVN87
+    GEOMECHANICS_MATERIAL AVN87
+  END
+
+  GEOMECHANICS_STRATA
+    GEOMECHANICS_REGION AVN31
+    GEOMECHANICS_MATERIAL AVN31
+  END
+
+  #------------------------------------------------------------------------------
+  # Boundary conditions
+  #------------------------------------------------------------------------------
   GEOMECHANICS_CONDITION west_roller
     TYPE
       DISPLACEMENT_X DIRICHLET
@@ -468,7 +629,9 @@ GEOMECHANICS
 
   # Top is intentionally left free.
 
-  # ---------------- Geomechanics output -----------------------
+  #------------------------------------------------------------------------------
+  # Geomechanics output
+  #------------------------------------------------------------------------------
   GEOMECHANICS_OUTPUT
     FORMAT HDF5
   END

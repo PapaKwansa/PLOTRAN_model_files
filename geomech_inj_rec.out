@@ -18,6 +18,14 @@ pflotran card:: MATERIAL_PROPERTY
   Name :: underburden
 pflotran card:: MATERIAL_PROPERTY
   Name :: hec
+pflotran card:: MATERIAL_PROPERTY
+  Name :: injection_borehole
+pflotran card:: MATERIAL_PROPERTY
+  Name :: AVN2
+pflotran card:: MATERIAL_PROPERTY
+  Name :: AVN87
+pflotran card:: MATERIAL_PROPERTY
+  Name :: AVN31
 pflotran card:: CHARACTERISTIC_CURVES
   Name :: default
  WARNING: Mualem-van Genuchten relative permeability function is being used without SMOOTH option.
@@ -38,7 +46,15 @@ east
 pflotran card:: REGION
 west
 pflotran card:: REGION
-wellbore
+injection_borehole
+pflotran card:: REGION
+strainmeter_sensors
+pflotran card:: REGION
+AVN2
+pflotran card:: REGION
+AVN87
+pflotran card:: REGION
+AVN31
 pflotran card:: FLOW_CONDITION
 initial
 pflotran card:: FLOW_CONDITION
@@ -75,6 +91,16 @@ underburden
 word :: GEOMECHANICS_REGION
 hec
 word :: GEOMECHANICS_REGION
+injection_borehole
+word :: GEOMECHANICS_REGION
+strainmeter_sensors
+word :: GEOMECHANICS_REGION
+AVN2
+word :: GEOMECHANICS_REGION
+AVN87
+word :: GEOMECHANICS_REGION
+AVN31
+word :: GEOMECHANICS_REGION
 west
 word :: GEOMECHANICS_REGION
 east
@@ -91,6 +117,14 @@ word :: GEOMECHANICS_MATERIAL_PROPERTY
 word :: GEOMECHANICS_MATERIAL_PROPERTY
 word :: GEOMECHANICS_MATERIAL_PROPERTY
 word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_MATERIAL_PROPERTY
+word :: GEOMECHANICS_STRATA
+word :: GEOMECHANICS_STRATA
+word :: GEOMECHANICS_STRATA
+word :: GEOMECHANICS_STRATA
 word :: GEOMECHANICS_STRATA
 word :: GEOMECHANICS_STRATA
 word :: GEOMECHANICS_STRATA
@@ -122,13 +156,13 @@ Extent of Gridded Domain
  Z: 0.000000E+00 - 7.500000E+02
 
 Size of Gridded Domain
- Number of grid cells: 71222
- Maximum number of grid cells per process: 14670
- Minimum number of grid cells per process: 13800
+ Number of grid cells: 58998
+ Maximum number of grid cells per process: 12277
+ Minimum number of grid cells per process: 11019
 
 Min/Max Cell Volumes [m^3]
- Maximum: 9.898718E+07
- Minimum: 9.375000E+00
+ Maximum: 1.427227E+29
+ Minimum: 1.370633E+00
 Opening hdf5 file: /home/kwesi/yaomesh/Pflotran_files_codes/./bartlesville_hec_material_ids.h5
 Setting up grid cell indices
 Opening group: Materials
@@ -139,7 +173,7 @@ Reading dataset: Materials/Material Ids
 Closing group: Materials
 Closing hdf5 file: /home/kwesi/yaomesh/Pflotran_files_codes/./bartlesville_hec_material_ids.h5
 
-Number of active grid cells: 71222
+Number of active grid cells: 58998
 Number of inactive grid cells: 0
 
 
@@ -371,7 +405,7 @@ Number of inactive grid cells: 0
 
 --------------------------------------------------------------------------------
           Flow Condition:   injection
-                  Region:   wellbore
+                  Region:   injection_borehole
 --------------------------------------------------------------------------------
 
   Flow Condition: injection
@@ -387,11 +421,11 @@ Number of inactive grid cells: 0
         Dataset: Unnamed Ascii Dataset
           Type: dataset_ascii_type
           Is transient?: yes
-          Number of times:      4
+          Number of times:      9
           Is cyclic?: no
           Buffer:
             Rank:  2
-            Dims:    1   4
+            Dims:    1   9
             Buffer Slice Size:   0
           Array Rank:  1
 
@@ -514,7 +548,7 @@ TODO(geh): add DatasetPrint()
 FLOW Time Stepper SNES
       maximum number of steps: 999999
 constant time steps threshold: 5
-       maximum number of cuts: 20
+       maximum number of cuts: 60
              reduction factor: 5.000000E-01
         maximum growth factor: 2.000000E+00
                  acceleration: on
@@ -539,110 +573,3 @@ FLOW Newton Solver
                          rtol: 1.000000E-08
                          stol: 1.000000E-08
                          dtol: 1.000000E+04
-                      maxnorm: 1.000000E+20
-                    inftolres: -9.990000E+02
-                    inftolupd: -9.990000E+02
-                 inftolrelupd: -9.990000E+02
-                 inftolsclres: -9.990000E+02
-                     max iter: 25
-                     min iter: 1
-                         maxf: 10000
-                  matrix type: baij
-         precond. matrix type: baij
-               inexact newton: off
-            print convergence: on
-   print detailed convergence: off
-          check infinity norm: on
-
-FLOW Linear Solver
-                       solver: bcgs
-               preconditioner: bjacobi
-                         atol: 1.000000E-50
-                         rtol: 1.000000E-05
-                         dtol: 1.000000E+04
-            maximum iteration: 10000
-
-GEOMECHANICS Time Stepper KSP
-      maximum number of steps: 999999
-constant time steps threshold: 5
-       maximum number of cuts: 16
-             reduction factor: 5.000000E-01
-        maximum growth factor: 2.000000E+00
-
-GEOMECHANICS Newton Solver
-                         atol: -2.000000E+00
-                         rtol: -2.000000E+00
-                         stol: -2.000000E+00
-                         dtol: -2.000000E+00
-                      maxnorm: 1.000000E+20
-                    inftolres: -9.990000E+02
-                    inftolupd: -9.990000E+02
-                 inftolrelupd: -9.990000E+02
-                 inftolsclres: -9.990000E+02
-                     max iter: -2
-                     min iter: 1
-                         maxf: -2
-                  matrix type: baij
-         precond. matrix type: baij
-               inexact newton: off
-            print convergence: on
-   print detailed convergence: off
-          check infinity norm: on
-
-GEOMECHANICS Linear Solver
-                       solver: bcgs
-               preconditioner:
-                         atol: 1.000000E-50
-                         rtol: 1.000000E-05
-                         dtol: 1.000000E+04
-            maximum iteration: 10000
-
- --> creating hdf5 output file: /home/kwesi/yaomesh/Pflotran_files_codes/geomech_inj_rec.h5
-      0.03 Seconds to write HDF5 file.
-
- Finished Initialization
-
-
-== RICHARDS FLOW ===============================================================
-  0 2r: 2.01E+02 2x: 0.00E+00 2u: 0.00E+00 ir: 8.59E+00 iu: 0.00E+00 rsn:   0
-  1 2r: 3.67E+01 2x: 1.07E+09 2u: 2.05E+04 ir: 1.78E+00 iu: 7.72E+02 rsn:   0
-  2 2r: 1.02E+01 2x: 1.07E+09 2u: 1.21E+03 ir: 4.94E-01 iu: 5.85E+01 rsn:   0
-  3 2r: 2.79E+00 2x: 1.07E+09 2u: 7.18E+02 ir: 1.36E-01 iu: 3.48E+01 rsn:   0
-  4 2r: 7.37E-01 2x: 1.07E+09 2u: 4.17E+02 ir: 3.58E-02 iu: 2.02E+01 rsn:   0
-  5 2r: 1.69E-01 2x: 1.07E+09 2u: 2.23E+02 ir: 8.19E-03 iu: 1.08E+01 rsn:   0
-  6 2r: 2.40E-02 2x: 1.07E+09 2u: 9.18E+01 ir: 1.17E-03 iu: 4.46E+00 rsn:   0
-  7 2r: 8.64E-04 2x: 1.07E+09 2u: 1.82E+01 ir: 4.21E-05 iu: 8.82E-01 rsn:   0
-  8 2r: 1.19E-05 2x: 1.07E+09 2u: 7.04E-01 ir: 1.02E-05 iu: 3.43E-02 rsn: stol
-
- Step      1 Time=  2.40000E-05 Dt=  2.40000E-05 [hour] conv_reason: 4
-  newton =   8 [       8] linear =     8 [         8] cuts =  0 [   0]
-  --> SNES Linear/Non-Linear Iterations = 8 / 8
-  --> SNES Residual: 0.118945E-04 0.167006E-09 0.101924E-04
-  --> max change: dpmx=   6.9609E+02
-
-== GEOMECHANICS ================================================================
-
- Step      1 Time=  2.40000E-05 Dt=  2.40000E-05 [hour] conv_reason: 2
-  linear =   116 [       116] cuts =  0 [   0]
-
-== RICHARDS FLOW ===============================================================
-  0 2r: 1.10E+08 2x: 0.00E+00 2u: 0.00E+00 ir: 4.80E+07 iu: 0.00E+00 rsn:   0
-  1 2r: 4.32E+10 2x: 3.68E+09 2u: 3.84E+09 ir: 1.36E+10 iu: 7.65E+07 rsn:   0
-  2 2r: 4.02E+10 2x: 5.10E+12 2u: 5.10E+12 ir: 1.54E+10 iu: 2.33E+11 rsn:   0
-  3 2r: 7.51E+11 2x: 6.81E+17 2u: 6.81E+17 ir: 5.24E+11 iu: 3.76E+17 rsn:   0
-  4 2r: 2.08E+20 2x: 6.66E+25 2u: 6.66E+25 -diverged
- -> Cut time step: snes= -9 icut= 1 [1] t= 2.40000E-05 dt= 3.96000E-06 [hour]
-Newton solver reason: SNES_DIVERGED_DTOL
-  0 2r: 2.19E+08 2x: 0.00E+00 2u: 0.00E+00 ir: 9.61E+07 iu: 0.00E+00 rsn:   0
-  1 2r: 8.64E+10 2x: 3.68E+09 2u: 3.84E+09 ir: 2.73E+10 iu: 7.65E+07 rsn:   0
-  2 2r: 8.04E+10 2x: 5.11E+12 2u: 5.11E+12 ir: 3.08E+10 iu: 2.46E+11 rsn:   0
-  3 2r: 1.12E+12 2x: 8.22E+17 2u: 8.22E+17 ir: 8.68E+11 iu: 4.65E+17 rsn:   0
-  4 2r: 1.76E+23 2x: 5.64E+28 2u: 5.64E+28 -diverged
- -> Cut time step: snes= -9 icut= 2 [2] t= 2.40000E-05 dt= 1.98000E-06 [hour]
-Newton solver reason: SNES_DIVERGED_DTOL
-  0 2r: 4.39E+08 2x: 0.00E+00 2u: 0.00E+00 ir: 1.92E+08 iu: 0.00E+00 rsn:   0
-  1 2r: 1.73E+11 2x: 3.68E+09 2u: 3.84E+09 ir: 5.45E+10 iu: 7.65E+07 rsn:   0
-  2 2r: 1.61E+11 2x: 5.11E+12 2u: 5.11E+12 ir: 6.16E+10 iu: 2.52E+11 rsn:   0
-  3 2r: 1.35E+12 2x: 9.10E+17 2u: 9.10E+17 ir: 1.08E+12 iu: 5.19E+17 rsn:   0
-  4 2r: 2.99E+14 2x: 9.60E+19 2u: 9.60E+19 -diverged
- -> Cut time step: snes= -9 icut= 3 [3] t= 2.40000E-05 dt= 9.90000E-07 [hour]
