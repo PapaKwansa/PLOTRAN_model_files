@@ -1,5 +1,5 @@
 name,kind,purpose,source_sensor_id,material_id,color_hint,tag_shape,center_x_m,center_y_m,center_z_m,tag_radius_m,tag_z_min_m,tag_z_max_m,lattice_z_min_m,lattice_z_max_m,yaw_deg,outer_refinement_radius_m,points_added
-injection_borehole,injection_borehole,Injection borehole terminating on the HEC top,,6,grey,vertical_cylinder,5000.0000000000,5000.0000000000,638.7500000000,1.0000000000,527.5000000000,750.0000000000,527.7500000000,535.2500000000,17.0000000000,80.0000000000,406
-AVN2,strainmeter_sensor,Shallow coupled strainmeter,AVN2,7,green,sphere,5160.0000000000,5185.0000000000,30.0000000000,1.0000000000,,,,,31.0000000000,50.0000000000,1183
-AVN87,strainmeter_sensor,Shallow coupled strainmeter,AVN87,8,green,sphere,5460.0000000000,5185.0000000000,30.0000000000,1.0000000000,,,,,-23.0000000000,50.0000000000,1211
-AVN31,strainmeter_sensor,Deep strainmeter near HEC,AVN31,9,green,sphere,5350.0000000000,4720.0000000000,520.0000000000,1.0000000000,,,,,11.0000000000,50.0000000000,1263
+injection_borehole,injection_borehole,Injection borehole terminating on the HEC top,,6,grey,vertical_cylinder,5000.0000000000,5000.0000000000,638.7500000000,5.0000000000,527.5000000000,750.0000000000,527.7500000000,535.2500000000,17.0000000000,80.0000000000,406
+AVN2,strainmeter_sensor,Shallow coupled strainmeter,AVN2,7,green,sphere,5160.0000000000,5185.0000000000,30.0000000000,5.0000000000,,,,,31.0000000000,50.0000000000,1183
+AVN87,strainmeter_sensor,Shallow coupled strainmeter,AVN87,8,green,sphere,5460.0000000000,5185.0000000000,30.0000000000,5.0000000000,,,,,-23.0000000000,50.0000000000,1211
+AVN31,strainmeter_sensor,Deep strainmeter near HEC,AVN31,9,green,sphere,5350.0000000000,4720.0000000000,520.0000000000,5.0000000000,,,,,11.0000000000,50.0000000000,1263

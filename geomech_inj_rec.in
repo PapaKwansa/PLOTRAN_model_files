@@ -17,7 +17,7 @@ SIMULATION
     /
     SUBSURFACE_GEOMECHANICS geomech
       OPTIONS
-        FLOW_COUPLING ONE_WAY_COUPLED
+        FLOW_COUPLING TWO_WAY_COUPLED
         # Change to TWO_WAY_COUPLED only after the one-way run is stable.
       /
     /
@@ -41,16 +41,15 @@ END
 #------------------------------------------------------------------------------
 NUMERICAL_METHODS FLOW
   TIMESTEPPER
-    INITIAL_TIMESTEP_SIZE 1.d-8 day
-    MAXIMUM_TIMESTEP_SIZE 1.d-4 day
-    PRESSURE_CHANGE_GOVERNOR 5.d2
-    SATURATION_CHANGE_GOVERNOR 5.d-2
+    INITIAL_TIMESTEP_SIZE 1.d-6 day
+    MAXIMUM_TIMESTEP_SIZE 1.d-3 day
+    PRESSURE_CHANGE_GOVERNOR 1.d3
+    SATURATION_CHANGE_GOVERNOR 1.d-1
     TIMESTEP_REDUCTION_FACTOR 0.5d0
     MAXIMUM_CONSECUTIVE_TS_CUTS 20
   /
   NEWTON_SOLVER
-    MAXIMUM_NUMBER_OF_ITERATIONS 50
-    SNES_TYPE NTRDC
+    MAXIMUM_NUMBER_OF_ITERATIONS 30
   /
 END
 
@@ -263,10 +262,10 @@ FLOW_CONDITION initial
   TYPE
     LIQUID_PRESSURE HYDROSTATIC
   /
-  DATUM 0.d0 0.d0 0.d0
+  DATUM 0.d0 0.d0 750.d0
   LIQUID_PRESSURE 101325.d0
   GRADIENT
-    LIQUID_PRESSURE 0.d0 0.d0 9.81d3
+    LIQUID_PRESSURE 0.d0 0.d0 -9.81d3
   /
 END
 
@@ -274,10 +273,10 @@ FLOW_CONDITION far_field_pressure
   TYPE
     LIQUID_PRESSURE HYDROSTATIC
   /
-  DATUM 0.d0 0.d0 0.d0
+  DATUM 0.d0 0.d0 750.d0
   LIQUID_PRESSURE 101325.d0
   GRADIENT
-    LIQUID_PRESSURE 0.d0 0.d0 9.81d3
+    LIQUID_PRESSURE 0.d0 0.d0 -9.81d3
   /
 END
 
@@ -297,13 +296,8 @@ FLOW_CONDITION injection
     TIME_UNITS hour
     DATA_UNITS m^3/s
     0.d0     0.d0
-    0.01d0   1.d-4
-    0.05d0   2.d-4
-    0.10d0   5.d-4
-    0.50d0   1.d-3
-    1.00d0   1.5d-3
-    3.00d0   1.9d-3
-    18.95d0  1.9d-3
+    0.5d0   1.d-3
+    3.0d0   1.9d-3
     19.d0    0.d0
   /
 END
@@ -368,12 +362,13 @@ GEOMECHANICS
 
   GEOMECHANICS_GRID
     TYPE UNSTRUCTURED bartlesville_hec.ugi
-    GRAVITY 0.d0 0.d0 9.81d0
+    GRAVITY 0.d0 0.d0 -9.81d0
   END
 
   GEOMECHANICS_TIME
     COUPLING_TIMESTEP_SIZE 0.01 hour
   END
+
 
   #------------------------------------------------------------------------------
   # Geomechanics regions
