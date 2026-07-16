@@ -1,12 +1,12 @@
 field,value
-representation,tag_only_on_rotated_matrix_lattice
-center_m,"[5000.0, 5000.0, 530.0]"
+representation,tag_only
+center_m,"[5000.0, 5000.0, -220.0]"
 length_m,580.0
 width_m,300.0
 thickness_m,5.0
 azimuth_deg_east_of_north,5.0
-tagged_node_count,435
-tagged_z_unique_m,530.0000000000
+tagged_node_count,426
+tagged_z_unique_m,-220.0000000000
 minimum_local_length_m,-280.0000000000
 maximum_local_length_m,280.0000000000
 minimum_local_width_m,-140.0000000000

@@ -1,7 +1,7 @@
 AVS validation passed
-node_count=45116
-tetrahedron_count=246932
+node_count=95218
+tetrahedron_count=532924
 id_mapping=node_file_row_order_to_contiguous_1_based
 reoriented_tetrahedra=0
-minimum_absolute_six_volume=2.8772124085756100e-10
+minimum_absolute_six_volume=4.0204862673332833e-04
 maximum_absolute_six_volume=3.7500000000000037e+07

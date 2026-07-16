@@ -28,7 +28,6 @@ pflotran card:: MATERIAL_PROPERTY
   Name :: AVN31
 pflotran card:: CHARACTERISTIC_CURVES
   Name :: default
- WARNING: Mualem-van Genuchten relative permeability function is being used without SMOOTH option.
 pflotran card:: OUTPUT
 "OUTPUT,SNAPSHOT_FILE,FORMAT,HDF5" set to default value.
 pflotran card:: REGION
@@ -153,16 +152,16 @@ Number of processes: 5
 Extent of Gridded Domain
  X: 0.000000E+00 - 1.000000E+04
  Y: 0.000000E+00 - 1.000000E+04
- Z: 0.000000E+00 - 7.500000E+02
+ Z: -7.500000E+02 - 0.000000E+00
 
 Size of Gridded Domain
- Number of grid cells: 44798
- Maximum number of grid cells per process: 9295
- Minimum number of grid cells per process: 8302
+ Number of grid cells: 95218
+ Maximum number of grid cells per process: 19721
+ Minimum number of grid cells per process: 17308
 
 Min/Max Cell Volumes [m^3]
- Maximum: 6.931176E+28
- Minimum: 8.789054E-01
+ Maximum: 1.757812E+07
+ Minimum: 2.052600E-03
 Opening hdf5 file: /home/kwesi/yaomesh/Pflotran_files_codes/./bartlesville_hec_material_ids.h5
 Setting up grid cell indices
 Opening group: Materials
@@ -173,7 +172,7 @@ Reading dataset: Materials/Material Ids
 Closing group: Materials
 Closing hdf5 file: /home/kwesi/yaomesh/Pflotran_files_codes/./bartlesville_hec_material_ids.h5
 
-Number of active grid cells: 44798
+Number of active grid cells: 95218
 Number of inactive grid cells: 0
 
 
@@ -421,11 +420,11 @@ Number of inactive grid cells: 0
         Dataset: Unnamed Ascii Dataset
           Type: dataset_ascii_type
           Is transient?: yes
-          Number of times:      4
+          Number of times:      2
           Is cyclic?: no
           Buffer:
             Rank:  2
-            Dims:    1   4
+            Dims:    1   2
             Buffer Slice Size:   0
           Array Rank:  1
 
@@ -548,8 +547,8 @@ TODO(geh): add DatasetPrint()
 FLOW Time Stepper SNES
       maximum number of steps: 999999
 constant time steps threshold: 5
-       maximum number of cuts: 20
-             reduction factor: 5.000000E-01
+       maximum number of cuts: 40
+             reduction factor: 2.500000E-01
         maximum growth factor: 2.000000E+00
                  acceleration: on
        acceleration threshold: 5
@@ -573,3 +572,296 @@ FLOW Newton Solver
                          rtol: 1.000000E-08
                          stol: 1.000000E-08
                          dtol: 1.000000E+04
+                      maxnorm: 1.000000E+20
+                    inftolres: -9.990000E+02
+                    inftolupd: -9.990000E+02
+                 inftolrelupd: -9.990000E+02
+                 inftolsclres: -9.990000E+02
+                     max iter: 50
+                     min iter: 1
+                         maxf: 10000
+                  matrix type: baij
+         precond. matrix type: baij
+               inexact newton: off
+            print convergence: on
+   print detailed convergence: off
+          check infinity norm: on
+
+FLOW Linear Solver
+                       solver: bcgs
+               preconditioner: asm
+                         atol: 1.000000E-50
+                         rtol: 1.000000E-08
+                         dtol: 1.000000E+04
+            maximum iteration: 200
+
+GEOMECHANICS Time Stepper KSP
+      maximum number of steps: 999999
+constant time steps threshold: 5
+       maximum number of cuts: 16
+             reduction factor: 5.000000E-01
+        maximum growth factor: 2.000000E+00
+
+GEOMECHANICS Newton Solver
+                         atol: -2.000000E+00
+                         rtol: -2.000000E+00
+                         stol: -2.000000E+00
+                         dtol: -2.000000E+00
+                      maxnorm: 1.000000E+20
+                    inftolres: -9.990000E+02
+                    inftolupd: -9.990000E+02
+                 inftolrelupd: -9.990000E+02
+                 inftolsclres: -9.990000E+02
+                     max iter: -2
+                     min iter: 1
+                         maxf: -2
+                  matrix type: baij
+         precond. matrix type: baij
+               inexact newton: off
+            print convergence: on
+   print detailed convergence: off
+          check infinity norm: on
+
+GEOMECHANICS Linear Solver
+                       solver: bcgs
+               preconditioner:
+                         atol: 1.000000E-50
+                         rtol: 1.000000E-05
+                         dtol: 1.000000E+04
+            maximum iteration: 10000
+
+ --> creating hdf5 output file: /home/kwesi/yaomesh/Pflotran_files_codes/geomech_inj_rec.h5
+      0.01 Seconds to write HDF5 file.
+
+ Finished Initialization
+
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 7.43E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 3.10E-06 iu: 0.00E+00 rsn:   0
+  1 2r: 3.41E-06 2x: 1.29E+09 2u: 6.83E-04 ir: 4.77E-07 iu: 8.07E-06 rsn: stol
+
+ Step      1 Time=  2.40000E-06 Dt=  2.40000E-06 [hour] conv_reason: 4
+  newton =   1 [       1] linear =     1 [         1] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.341311E-05 0.358453E-10 0.476837E-06
+  --> max change: dpmx=   8.0746E-06
+
+== GEOMECHANICS ================================================================
+
+ Step      1 Time=  2.40000E-06 Dt=  2.40000E-06 [hour] conv_reason: 2
+  linear =   212 [       212] cuts =  0 [   0]
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 5.31E+08 2x: 0.00E+00 2u: 0.00E+00 ir: 2.31E+07 iu: 0.00E+00 rsn:   0
+  1 2r: 5.91E+10 2x: 4.24E+09 2u: 3.09E+09 ir: 3.49E+09 iu: 2.88E+07 rsn:   0
+  2 2r: 1.03E+09 2x: 2.27E+11 2u: 2.28E+11 ir: 2.10E+08 iu: 2.00E+09 rsn:   0
+  3 2r: 7.72E+09 2x: 1.22E+15 2u: 1.22E+15 ir: 4.55E+08 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 1 [1] t= 2.40000E-06 dt= 1.20000E-06 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 2.12E+09 2x: 0.00E+00 2u: 0.00E+00 ir: 9.23E+07 iu: 0.00E+00 rsn:   0
+  1 2r: 2.36E+11 2x: 4.25E+09 2u: 3.09E+09 ir: 1.39E+10 iu: 2.88E+07 rsn:   0
+  2 2r: 4.13E+09 2x: 2.27E+11 2u: 2.28E+11 ir: 8.40E+08 iu: 2.00E+09 rsn:   0
+  3 2r: 3.09E+10 2x: 1.22E+15 2u: 1.22E+15 ir: 1.82E+09 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 2 [2] t= 2.40000E-06 dt= 3.00000E-07 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 8.50E+09 2x: 0.00E+00 2u: 0.00E+00 ir: 3.69E+08 iu: 0.00E+00 rsn:   0
+  1 2r: 9.45E+11 2x: 4.25E+09 2u: 3.09E+09 ir: 5.58E+10 iu: 2.88E+07 rsn:   0
+  2 2r: 1.65E+10 2x: 2.28E+11 2u: 2.28E+11 ir: 3.36E+09 iu: 2.00E+09 rsn:   0
+  3 2r: 1.24E+11 2x: 1.22E+15 2u: 1.22E+15 ir: 7.28E+09 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 3 [3] t= 2.40000E-06 dt= 7.50000E-08 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 3.40E+10 2x: 0.00E+00 2u: 0.00E+00 ir: 1.48E+09 iu: 0.00E+00 rsn:   0
+  1 2r: 3.78E+12 2x: 4.25E+09 2u: 3.09E+09 ir: 2.23E+11 iu: 2.88E+07 rsn:   0
+  2 2r: 6.61E+10 2x: 2.28E+11 2u: 2.28E+11 ir: 1.34E+10 iu: 2.00E+09 rsn:   0
+  3 2r: 4.94E+11 2x: 1.22E+15 2u: 1.22E+15 ir: 2.91E+10 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 4 [4] t= 2.40000E-06 dt= 1.87500E-08 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 1.36E+11 2x: 0.00E+00 2u: 0.00E+00 ir: 5.91E+09 iu: 0.00E+00 rsn:   0
+  1 2r: 1.51E+13 2x: 4.25E+09 2u: 3.09E+09 ir: 8.92E+11 iu: 2.88E+07 rsn:   0
+  2 2r: 2.65E+11 2x: 2.28E+11 2u: 2.28E+11 ir: 5.37E+10 iu: 2.00E+09 rsn:   0
+  3 2r: 1.98E+12 2x: 1.22E+15 2u: 1.22E+15 ir: 1.17E+11 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 5 [5] t= 2.40000E-06 dt= 4.68750E-09 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 5.44E+11 2x: 0.00E+00 2u: 0.00E+00 ir: 2.36E+10 iu: 0.00E+00 rsn:   0
+  1 2r: 6.05E+13 2x: 4.25E+09 2u: 3.09E+09 ir: 3.57E+12 iu: 2.88E+07 rsn:   0
+  2 2r: 1.06E+12 2x: 2.28E+11 2u: 2.28E+11 ir: 2.15E+11 iu: 2.00E+09 rsn:   0
+  3 2r: 7.91E+12 2x: 1.22E+15 2u: 1.22E+15 ir: 4.66E+11 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 6 [6] t= 2.40000E-06 dt= 1.17187E-09 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 2.17E+12 2x: 0.00E+00 2u: 0.00E+00 ir: 9.45E+10 iu: 0.00E+00 rsn:   0
+  1 2r: 2.42E+14 2x: 4.25E+09 2u: 3.09E+09 ir: 1.43E+13 iu: 2.88E+07 rsn:   0
+  2 2r: 4.23E+12 2x: 2.28E+11 2u: 2.28E+11 ir: 8.60E+11 iu: 2.00E+09 rsn:   0
+  3 2r: 3.16E+13 2x: 1.22E+15 2u: 1.22E+15 ir: 1.86E+12 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 7 [7] t= 2.40000E-06 dt= 2.92969E-10 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 8.70E+12 2x: 0.00E+00 2u: 0.00E+00 ir: 3.78E+11 iu: 0.00E+00 rsn:   0
+  1 2r: 9.68E+14 2x: 4.25E+09 2u: 3.09E+09 ir: 5.71E+13 iu: 2.88E+07 rsn:   0
+  2 2r: 1.69E+13 2x: 2.28E+11 2u: 2.28E+11 ir: 3.44E+12 iu: 2.00E+09 rsn:   0
+  3 2r: 1.26E+14 2x: 1.22E+15 2u: 1.22E+15 ir: 7.46E+12 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 8 [8] t= 2.40000E-06 dt= 7.32422E-11 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 3.48E+13 2x: 0.00E+00 2u: 0.00E+00 ir: 1.51E+12 iu: 0.00E+00 rsn:   0
+  1 2r: 3.87E+15 2x: 4.25E+09 2u: 3.09E+09 ir: 2.28E+14 iu: 2.88E+07 rsn:   0
+  2 2r: 6.77E+13 2x: 2.28E+11 2u: 2.28E+11 ir: 1.38E+13 iu: 2.00E+09 rsn:   0
+  3 2r: 5.06E+14 2x: 1.22E+15 2u: 1.22E+15 ir: 2.98E+13 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 9 [9] t= 2.40000E-06 dt= 1.83105E-11 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 1.39E+14 2x: 0.00E+00 2u: 0.00E+00 ir: 6.05E+12 iu: 0.00E+00 rsn:   0
+  1 2r: 1.55E+16 2x: 4.25E+09 2u: 3.09E+09 ir: 9.14E+14 iu: 2.88E+07 rsn:   0
+  2 2r: 2.71E+14 2x: 2.28E+11 2u: 2.28E+11 ir: 5.50E+13 iu: 2.00E+09 rsn:   0
+  3 2r: 2.02E+15 2x: 1.22E+15 2u: 1.22E+15 ir: 1.19E+14 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 10 [10] t= 2.40000E-06 dt= 4.57764E-12 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 5.57E+14 2x: 0.00E+00 2u: 0.00E+00 ir: 2.42E+13 iu: 0.00E+00 rsn:   0
+  1 2r: 6.19E+16 2x: 4.25E+09 2u: 3.09E+09 ir: 3.65E+15 iu: 2.88E+07 rsn:   0
+  2 2r: 1.08E+15 2x: 2.28E+11 2u: 2.28E+11 ir: 2.20E+14 iu: 2.00E+09 rsn:   0
+  3 2r: 8.09E+15 2x: 1.22E+15 2u: 1.22E+15 ir: 4.77E+14 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 11 [11] t= 2.40000E-06 dt= 1.14441E-12 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 2.23E+15 2x: 0.00E+00 2u: 0.00E+00 ir: 9.68E+13 iu: 0.00E+00 rsn:   0
+  1 2r: 2.48E+17 2x: 4.25E+09 2u: 3.09E+09 ir: 1.46E+16 iu: 2.88E+07 rsn:   0
+  2 2r: 4.33E+15 2x: 2.28E+11 2u: 2.28E+11 ir: 8.80E+14 iu: 2.00E+09 rsn:   0
+  3 2r: 3.24E+16 2x: 1.22E+15 2u: 1.22E+15 ir: 1.91E+15 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 12 [12] t= 2.40000E-06 dt= 2.86102E-13 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 8.91E+15 2x: 0.00E+00 2u: 0.00E+00 ir: 3.87E+14 iu: 0.00E+00 rsn:   0
+  1 2r: 9.91E+17 2x: 4.25E+09 2u: 3.09E+09 ir: 5.85E+16 iu: 2.88E+07 rsn:   0
+  2 2r: 1.73E+16 2x: 2.28E+11 2u: 2.28E+11 ir: 3.52E+15 iu: 2.00E+09 rsn:   0
+  3 2r: 1.30E+17 2x: 1.22E+15 2u: 1.22E+15 ir: 7.64E+15 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 13 [13] t= 2.40000E-06 dt= 7.15256E-14 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 3.56E+16 2x: 0.00E+00 2u: 0.00E+00 ir: 1.55E+15 iu: 0.00E+00 rsn:   0
+  1 2r: 3.96E+18 2x: 4.25E+09 2u: 3.09E+09 ir: 2.34E+17 iu: 2.88E+07 rsn:   0
+  2 2r: 6.93E+16 2x: 2.28E+11 2u: 2.28E+11 ir: 1.41E+16 iu: 2.00E+09 rsn:   0
+  3 2r: 5.18E+17 2x: 1.22E+15 2u: 1.22E+15 ir: 3.05E+16 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 14 [14] t= 2.40000E-06 dt= 1.78814E-14 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 1.43E+17 2x: 0.00E+00 2u: 0.00E+00 ir: 6.19E+15 iu: 0.00E+00 rsn:   0
+  1 2r: 1.59E+19 2x: 4.25E+09 2u: 3.09E+09 ir: 9.36E+17 iu: 2.88E+07 rsn:   0
+  2 2r: 2.77E+17 2x: 2.28E+11 2u: 2.28E+11 ir: 5.63E+16 iu: 2.00E+09 rsn:   0
+  3 2r: 2.07E+18 2x: 1.22E+15 2u: 1.22E+15 ir: 1.22E+17 iu: 1.32E+13 rsn:   0
+ -> Cut time step: snes= -3 icut= 15 [15] t= 2.40000E-06 dt= 4.47035E-15 [hour]
+Newton solver reason: SNES_DIVERGED_LINEAR_SOLVE
+Linear solver reason: KSP_DIVERGED_ITS
+  0 2r: 5.70E+17 2x: 0.00E+00 2u: 0.00E+00 ir: 2.48E+16 iu: 0.00E+00 rsn:   0
+  1 2r: 6.34E+19 2x: 4.25E+09 2u: 3.09E+09 ir: 3.74E+18 iu: 2.88E+07 rsn:   0
+  2 2r: 1.11E+18 2x: 2.28E+11 2u: 2.28E+11 ir: 2.25E+17 iu: 2.00E+09 rsn:   0
+  3 2r: 8.29E+18 2x: 1.22E+15 2u: 1.22E+15 ir: 4.89E+17 iu: 1.32E+13 rsn:   0
+  4 2r: 2.36E+17 2x: 2.64E+25 2u: 2.64E+25 ir: 4.72E+16 iu: 4.49E+23 rsn:   0
+  5 2r: 1.20E+17 2x: 2.64E+25 2u: 1.41E+15 ir: 3.72E+16 iu: 5.23E+14 rsn: stol
+
+ Step      2 Time=  2.40000E-06 Dt=  4.47035E-15 [hour] conv_reason: 4
+  newton =  50 [      51] linear =  3214 [      3215] cuts = 15 [  15]
+  --> SNES Linear/Non-Linear Iterations = 36 / 5
+  --> SNES Residual: 0.119720E+18 0.125733E+13 0.372224E+17
+  --> max change: dpmx=   4.4937E+23
+
+== GEOMECHANICS ================================================================
+
+ Step      2 Time=  2.40000E-06 Dt=  4.47035E-15 [hour] conv_reason: 2
+  linear =   284 [       496] cuts =  0 [   0]
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 4.79E+32 2x: 0.00E+00 2u: 0.00E+00 ir: 2.78E+31 iu: 0.00E+00 rsn:   0
+  1 2r: 4.77E+32 2x: 2.64E+25 2u: 3.14E+17 ir: 2.78E+31 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 1 [16] t= 2.40000E-06 dt= 1.11759E-15 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 1.92E+33 2x: 0.00E+00 2u: 0.00E+00 ir: 1.11E+32 iu: 0.00E+00 rsn:   0
+  1 2r: 1.91E+33 2x: 2.64E+25 2u: 3.14E+17 ir: 1.11E+32 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 2 [17] t= 2.40000E-06 dt= 2.79397E-16 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 7.67E+33 2x: 0.00E+00 2u: 0.00E+00 ir: 4.45E+32 iu: 0.00E+00 rsn:   0
+  1 2r: 7.63E+33 2x: 2.64E+25 2u: 3.14E+17 ir: 4.45E+32 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 3 [18] t= 2.40000E-06 dt= 6.98492E-17 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 3.07E+34 2x: 0.00E+00 2u: 0.00E+00 ir: 1.78E+33 iu: 0.00E+00 rsn:   0
+  1 2r: 3.05E+34 2x: 2.64E+25 2u: 3.14E+17 ir: 1.78E+33 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 4 [19] t= 2.40000E-06 dt= 1.74623E-17 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 1.23E+35 2x: 0.00E+00 2u: 0.00E+00 ir: 7.12E+33 iu: 0.00E+00 rsn:   0
+  1 2r: 1.22E+35 2x: 2.64E+25 2u: 3.14E+17 ir: 7.12E+33 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 5 [20] t= 2.40000E-06 dt= 4.36557E-18 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 4.91E+35 2x: 0.00E+00 2u: 0.00E+00 ir: 2.85E+34 iu: 0.00E+00 rsn:   0
+  1 2r: 4.88E+35 2x: 2.64E+25 2u: 3.14E+17 ir: 2.85E+34 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 6 [21] t= 2.40000E-06 dt= 1.09139E-18 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 1.96E+36 2x: 0.00E+00 2u: 0.00E+00 ir: 1.14E+35 iu: 0.00E+00 rsn:   0
+  1 2r: 1.95E+36 2x: 2.64E+25 2u: 3.14E+17 ir: 1.14E+35 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 7 [22] t= 2.40000E-06 dt= 2.72848E-19 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 7.85E+36 2x: 0.00E+00 2u: 0.00E+00 ir: 4.56E+35 iu: 0.00E+00 rsn:   0
+  1 2r: 7.81E+36 2x: 2.64E+25 2u: 3.14E+17 ir: 4.56E+35 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 8 [23] t= 2.40000E-06 dt= 6.82121E-20 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 3.14E+37 2x: 0.00E+00 2u: 0.00E+00 ir: 1.82E+36 iu: 0.00E+00 rsn:   0
+  1 2r: 3.13E+37 2x: 2.64E+25 2u: 3.14E+17 ir: 1.82E+36 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 9 [24] t= 2.40000E-06 dt= 1.70530E-20 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 1.26E+38 2x: 0.00E+00 2u: 0.00E+00 ir: 7.29E+36 iu: 0.00E+00 rsn:   0
+  1 2r: 1.25E+38 2x: 2.64E+25 2u: 3.14E+17 ir: 7.29E+36 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 10 [25] t= 2.40000E-06 dt= 4.26326E-21 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 5.03E+38 2x: 0.00E+00 2u: 0.00E+00 ir: 2.92E+37 iu: 0.00E+00 rsn:   0
+  1 2r: 5.00E+38 2x: 2.64E+25 2u: 3.14E+17 ir: 2.92E+37 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 11 [26] t= 2.40000E-06 dt= 1.06581E-21 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 2.01E+39 2x: 0.00E+00 2u: 0.00E+00 ir: 1.17E+38 iu: 0.00E+00 rsn:   0
+  1 2r: 2.00E+39 2x: 2.64E+25 2u: 3.14E+17 ir: 1.17E+38 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 12 [27] t= 2.40000E-06 dt= 2.66454E-22 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 8.04E+39 2x: 0.00E+00 2u: 0.00E+00 ir: 4.67E+38 iu: 0.00E+00 rsn:   0
+  1 2r: 8.00E+39 2x: 2.64E+25 2u: 3.14E+17 ir: 4.67E+38 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 13 [28] t= 2.40000E-06 dt= 6.66134E-23 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 3.22E+40 2x: 0.00E+00 2u: 0.00E+00 ir: 1.87E+39 iu: 0.00E+00 rsn:   0
+  1 2r: 3.20E+40 2x: 2.64E+25 2u: 3.14E+17 ir: 1.87E+39 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 14 [29] t= 2.40000E-06 dt= 1.66533E-23 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 1.29E+41 2x: 0.00E+00 2u: 0.00E+00 ir: 7.47E+39 iu: 0.00E+00 rsn:   0
+  1 2r: 1.28E+41 2x: 2.64E+25 2u: 3.14E+17 ir: 7.47E+39 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 15 [30] t= 2.40000E-06 dt= 4.16334E-24 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 5.15E+41 2x: 0.00E+00 2u: 0.00E+00 ir: 2.99E+40 iu: 0.00E+00 rsn:   0
+  1 2r: 5.12E+41 2x: 2.64E+25 2u: 3.14E+17 ir: 2.99E+40 iu: 2.74E+15 rsn: max_norm
+ -> Cut time step: snes= -20 icut= 16 [31] t= 2.40000E-06 dt= 1.04083E-24 [hour]
+Newton solver reason: Unknown(-20).
+  0 2r: 2.06E+42 2x: 0.00E+00 2u: 0.00E+00 ir: 1.20E+41 iu: 0.00E+00 rsn:   0
+  1 2r: 2.05E+42 2x: 2.64E+25 2u: 3.14E+17 ir: 1.20E+41 iu: 2.74E+15 rsn: max_norm
+ Stopping: Time step size is less than the minimum allowable time step.
+    dt= 1.0408341E-24, dtmin= 2.7777778E-24 [hour]
+
+ --> appending to hdf5 output file: /home/kwesi/yaomesh/Pflotran_files_codes/geomech_inj_rec.h5
+      0.02 Seconds to write HDF5 file.
+Newton solver reason: Unknown(-20).
+
+PMCSubsurfaceFlow
+ Total Time: 3.9835E+01 seconds
+
+ FLOW TS SNES steps = 2  newton = 51  linear = 3215  cuts = 15
+ FLOW TS SNES Wasted Linear Iterations = 3178
+ FLOW TS SNES Wasted Newton Iterations = 45
+ FLOW TS SNES time = 38.9 seconds
+
+PMCSubsurfaceGeomechanics
+ Total Time: 0.0000E+00 seconds
+
+ GEOMECHANICS TS KSP steps = 2 linear = 496 cuts = 0
+ GEOMECHANICS TS KSP Wasted Linear Iterations = 0
+ GEOMECHANICS TS KSP time = 13.9 seconds
+
+ Wall Clock Time:  5.9726E+01 [sec]   9.9543E-01 [min]   1.6591E-02 [hr]

@@ -1,14 +1,20 @@
 {
+  "coordinate_convention": {
+    "description": "elevation relative to model top",
+    "top_z_m": 0.0,
+    "bottom_z_m": -750.0,
+    "conversion_from_previous_geometry": "z_new = z_old - 750"
+  },
   "domain": {
     "min": [
       0.0,
       0.0,
-      0.0
+      -750.0
     ],
     "max": [
       10000.0,
       10000.0,
-      750.0
+      0.0
     ],
     "size": [
       10000.0,
@@ -21,171 +27,195 @@
       "number": 1,
       "material_id": 4,
       "name": "underburden",
-      "z_min": 0.0,
-      "z_max": 200.0
+      "z_min": -750.0,
+      "z_max": -550.0
     },
     {
       "number": 2,
       "material_id": 2,
       "name": "bartlesville_sand",
-      "z_min": 200.0,
-      "z_max": 220.0
+      "z_min": -550.0,
+      "z_max": -530.0
     },
     {
       "number": 3,
       "material_id": 3,
       "name": "basal_layer",
-      "z_min": 220.0,
-      "z_max": 250.0
+      "z_min": -530.0,
+      "z_max": -500.0
     },
     {
       "number": 4,
       "material_id": 1,
       "name": "overburden",
-      "z_min": 250.0,
-      "z_max": 750.0
+      "z_min": -500.0,
+      "z_max": 0.0
     }
   ],
   "vertical_bands": [
     {
       "label": "L1_bottom_coarse",
-      "z_min": 0.0,
-      "z_max": 100.0,
+      "z_min": -750.0,
+      "z_max": -650.0,
       "geological_layer": 1,
-      "note": "largest cells near lower external boundary"
+      "note": "largest cells near bottom boundary"
     },
     {
       "label": "L1_lower_transition",
-      "z_min": 100.0,
-      "z_max": 160.0,
+      "z_min": -650.0,
+      "z_max": -590.0,
       "geological_layer": 1,
       "note": "transition toward refined beds"
     },
     {
       "label": "L1_mid_transition",
-      "z_min": 160.0,
-      "z_max": 185.0,
+      "z_min": -590.0,
+      "z_max": -565.0,
       "geological_layer": 1,
       "note": "transition toward refined beds"
     },
     {
       "label": "L1_upper_transition",
-      "z_min": 185.0,
-      "z_max": 200.0,
+      "z_min": -565.0,
+      "z_max": -550.0,
       "geological_layer": 1,
       "note": "matches fine spacing near layer 2"
     },
     {
       "label": "L2_lower_refined",
-      "z_min": 200.0,
-      "z_max": 210.0,
+      "z_min": -550.0,
+      "z_max": -540.0,
       "geological_layer": 2,
-      "note": "refined near layer 3"
+      "note": "refined Bartlesville interval"
     },
     {
       "label": "L2_upper_refined",
-      "z_min": 210.0,
-      "z_max": 220.0,
+      "z_min": -540.0,
+      "z_max": -530.0,
       "geological_layer": 2,
-      "note": "refined near layer 3"
+      "note": "refined Bartlesville interval"
     },
     {
       "label": "L3_lower_refined",
-      "z_min": 220.0,
-      "z_max": 235.0,
+      "z_min": -530.0,
+      "z_max": -515.0,
       "geological_layer": 3,
-      "note": "layer 3 refined band"
+      "note": "basal layer refined band"
     },
     {
       "label": "L3_upper_refined",
-      "z_min": 235.0,
-      "z_max": 250.0,
+      "z_min": -515.0,
+      "z_max": -500.0,
       "geological_layer": 3,
-      "note": "layer 3 refined band"
+      "note": "basal layer refined band"
     },
     {
       "label": "L4_lower_refined",
-      "z_min": 250.0,
-      "z_max": 350.0,
+      "z_min": -500.0,
+      "z_max": -400.0,
       "geological_layer": 4,
       "note": "coarsening upward"
     },
     {
       "label": "L4_transition_1",
-      "z_min": 350.0,
-      "z_max": 500.0,
+      "z_min": -400.0,
+      "z_max": -250.0,
+      "geological_layer": 4,
+      "note": "coarsening toward HEC"
+    },
+    {
+      "label": "L4_hec_lower_matrix",
+      "z_min": -250.0,
+      "z_max": -225.0,
+      "geological_layer": 4,
+      "note": "matrix level below HEC"
+    },
+    {
+      "label": "L4_hec_center_lower",
+      "z_min": -225.0,
+      "z_max": -220.0,
+      "geological_layer": 4,
+      "note": "HEC centre support"
+    },
+    {
+      "label": "L4_hec_center_upper",
+      "z_min": -220.0,
+      "z_max": -215.0,
+      "geological_layer": 4,
+      "note": "HEC centre support"
+    },
+    {
+      "label": "L4_transition_2a",
+      "z_min": -215.0,
+      "z_max": -170.0,
       "geological_layer": 4,
       "note": "coarsening upward"
     },
     {
-      "label": "L4_hec_lower_matrix",
-      "z_min": 500.0,
-      "z_max": 525.0,
+      "label": "L4_transition_2b",
+      "z_min": -170.0,
+      "z_max": -135.0,
       "geological_layer": 4,
-      "note": "matrix plane below 5 m HEC support"
+      "note": "coarsening upward"
     },
     {
-      "label": "L4_hec_center_matrix",
-      "z_min": 525.0,
-      "z_max": 530.0,
-      "geological_layer": 4,
-      "note": "matrix plane at HEC centre"
-    },
-    {
-      "label": "L4_hec_upper_matrix",
-      "z_min": 530.0,
-      "z_max": 535.0,
-      "geological_layer": 4,
-      "note": "matrix plane above 5 m HEC support"
-    },
-    {
-      "label": "L4_transition_2",
-      "z_min": 535.0,
-      "z_max": 650.0,
+      "label": "L4_transition_2c",
+      "z_min": -135.0,
+      "z_max": -100.0,
       "geological_layer": 4,
       "note": "coarsening upward"
     },
     {
       "label": "L4_top_transition",
-      "z_min": 650.0,
-      "z_max": 750.0,
+      "z_min": -100.0,
+      "z_max": 0.0,
       "geological_layer": 4,
-      "note": "larger cells near upper external boundary"
+      "note": "larger cells near top boundary"
     }
   ],
   "z_levels_m": [
-    0.0,
-    100.0,
-    160.0,
-    185.0,
-    200.0,
-    210.0,
-    220.0,
-    235.0,
-    250.0,
-    350.0,
-    500.0,
-    525.0,
-    530.0,
-    535.0,
-    650.0,
-    750.0
+    -750.0,
+    -650.0,
+    -590.0,
+    -565.0,
+    -550.0,
+    -540.0,
+    -530.0,
+    -515.0,
+    -500.0,
+    -400.0,
+    -250.0,
+    -225.0,
+    -220.0,
+    -215.0,
+    -170.0,
+    -135.0,
+    -100.0,
+    0.0
   ],
-  "meshing": {
-    "strategy": "matrix-only layered PLC plus compact graded BCC Part-1 refinement clouds; no polar shells or radial spokes",
-    "base_x_axis_m": [
+  "matrix": {
+    "x_axis_m": [
       0.0,
+      250.0,
       500.0,
+      750.0,
       1000.0,
+      1250.0,
       1500.0,
+      1750.0,
       2000.0,
+      2250.0,
       2500.0,
+      2750.0,
       3000.0,
+      3250.0,
       3500.0,
+      3750.0,
       4000.0,
       4200.0,
       4400.0,
       4600.0,
+      4700.0,
       4800.0,
       4820.0,
       4840.0,
@@ -207,32 +237,49 @@
       5160.0,
       5180.0,
       5200.0,
+      5300.0,
       5400.0,
       5600.0,
       5800.0,
       6000.0,
       6500.0,
+      6750.0,
       7000.0,
+      7250.0,
       7500.0,
+      7750.0,
       8000.0,
+      8250.0,
       8500.0,
+      8750.0,
       9000.0,
+      9250.0,
       9500.0,
+      9750.0,
       10000.0
     ],
-    "base_y_axis_m": [
+    "y_axis_m": [
       0.0,
+      250.0,
       500.0,
+      750.0,
       1000.0,
+      1250.0,
       1500.0,
+      1750.0,
       2000.0,
+      2250.0,
       2500.0,
+      2750.0,
       3000.0,
+      3250.0,
       3500.0,
+      3750.0,
       4000.0,
       4200.0,
       4400.0,
       4500.0,
+      4660.0,
       4680.0,
       4700.0,
       4720.0,
@@ -266,46 +313,57 @@
       5280.0,
       5300.0,
       5320.0,
+      5340.0,
       5500.0,
       5600.0,
       5800.0,
       6000.0,
       6500.0,
+      6750.0,
       7000.0,
+      7250.0,
       7500.0,
+      7750.0,
       8000.0,
+      8250.0,
       8500.0,
+      8750.0,
       9000.0,
+      9250.0,
       9500.0,
+      9750.0,
       10000.0
     ],
-    "rotated_hec_tag_lattice_step_m": 20.0,
-    "tetgen_flags": "-pnAef",
-    "no_tetgen_a": true,
-    "local_refinement": {
-      "method": "compact_overlapping_yaw_rotated_jittered_body_centred_cubic_point_clouds",
-      "band_overlap_fraction": 0.1,
-      "bcc_jitter_fraction": 0.025,
-      "minimum_point_separation_fraction": 0.45,
-      "point_hash_bin_size_m": 8.0,
-      "shallow_sensor_boundary_handling": "spherical halos are clipped inside the external domain with a positive point clearance; no free point is placed on z=0"
-    }
+    "rotated_hec_lattice_step_m": 20.0
+  },
+  "meshing": {
+    "strategy": "closed target PLCs plus staggered tube shells and rotated geodesic shells",
+    "tetgen_default_flags": "-pnAef",
+    "point_count": 95106,
+    "facet_count": 58538,
+    "holes": 0,
+    "regions": 8
   },
   "hec": {
     "name": "bartlesville_hec",
     "material_id": 5,
     "host_material_id": 1,
-    "representation": "tag_only_on_rotated_matrix_lattice",
+    "representation": "tag_only",
     "center": [
       5000.0,
       5000.0,
-      530.0
+      -220.0
+    ],
+    "center_xyz_m": [
+      5000.0,
+      5000.0,
+      -220.0
     ],
     "length_m": 580.0,
     "width_m": 300.0,
     "thickness_m": 5.0,
-    "bottom_z_m": 527.5,
-    "top_z_m": 532.5,
+    "bottom_z_m": -222.5,
+    "top_z_m": -217.5,
     "azimuth_deg_east_of_north": 5.0,
     "dip_deg": 0.0,
     "axes": {
@@ -323,70 +381,110 @@
         0.0,
         0.0,
         1.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
       ]
     },
     "tagging": {
-      "method": "strict_z530_vertex_centres_inside_exact_oriented_rectangle",
-      "expected_vertical_dual_support_m": [
-        527.5,
-        532.5
-      ],
-      "expected_tagged_vertex_count": 435
+      "method": "oriented_rectangular_prism_in_local_coordinates",
+      "center_field": "center",
+      "z_range_m": [
+        -222.5,
+        -217.5
+      ]
     }
   },
   "refinement_targets": [
     {
       "name": "injection_borehole",
       "kind": "injection_borehole",
-      "purpose": "Injection borehole terminating on the HEC top",
+      "purpose": "Injection well from the HEC top toward the model top",
       "material_id": 6,
-      "color_hint": "grey",
+      "surface_marker": 11,
       "tag_shape": "vertical_cylinder",
       "center_xyz_m": [
         5000.0,
         5000.0,
-        638.75
+        -109.0
       ],
-      "tag_radius_m": 5.0,
+      "tag_radius_m": 0.75,
       "source_sensor_id": null,
-      "tag_z_min_m": 527.5,
-      "tag_z_max_m": 750.0,
-      "yaw_deg": 17.0,
-      "outer_refinement_radius_m": 80.0,
-      "refinement_bands": [
-        {
-          "outer_radius_m": 10.0,
-          "spacing_m": 3.0
-        },
-        {
-          "outer_radius_m": 18.0,
-          "spacing_m": 5.0
-        },
-        {
-          "outer_radius_m": 32.0,
-          "spacing_m": 8.0
-        },
-        {
-          "outer_radius_m": 55.0,
-          "spacing_m": 13.0
-        },
-        {
-          "outer_radius_m": 80.0,
-          "spacing_m": 21.0
-        }
-      ],
       "local_point_stats": {
-        "points_added": 406,
-        "attempted": 2170,
-        "accepted": 406,
-        "rejected_outside_domain": 0,
-        "rejected_minimum_separation": 98
+        "surface_points": 2330,
+        "surface_facets": 4656,
+        "surface_rings": 291,
+        "refinement_points": 8860,
+        "attempted": 8956,
+        "accepted": 8860,
+        "rejected_domain": 96,
+        "rejected_spacing": 0,
+        "points_added": 11190
       },
-      "lattice_z_min_m": 527.75,
-      "lattice_z_max_m": 535.25,
-      "hec_local_uv_m": [
-        0.0,
-        0.0
+      "surface_topology": {
+        "facets": 4656,
+        "edges": 6984,
+        "bad_edges": 0
+      },
+      "tag_z_min_m": -217.5,
+      "tag_z_max_m": -0.5,
+      "tube_shells": [
+        {
+          "radius_m": 1.0,
+          "axial_spacing_m": 0.8,
+          "circumferential_points": 8,
+          "endpoint_padding_m": 1.0
+        },
+        {
+          "radius_m": 1.6,
+          "axial_spacing_m": 1.0,
+          "circumferential_points": 8,
+          "endpoint_padding_m": 1.5
+        },
+        {
+          "radius_m": 2.5,
+          "axial_spacing_m": 1.4,
+          "circumferential_points": 10,
+          "endpoint_padding_m": 2.0
+        },
+        {
+          "radius_m": 4.0,
+          "axial_spacing_m": 2.0,
+          "circumferential_points": 10,
+          "endpoint_padding_m": 2.8
+        },
+        {
+          "radius_m": 6.2,
+          "axial_spacing_m": 3.2,
+          "circumferential_points": 12,
+          "endpoint_padding_m": 4.0
+        },
+        {
+          "radius_m": 9.5,
+          "axial_spacing_m": 4.8,
+          "circumferential_points": 12,
+          "endpoint_padding_m": 5.5
+        },
+        {
+          "radius_m": 14.0,
+          "axial_spacing_m": 7.2,
+          "circumferential_points": 12,
+          "endpoint_padding_m": 8.0
+        },
+        {
+          "radius_m": 20.0,
+          "axial_spacing_m": 10.5,
+          "circumferential_points": 12,
+          "endpoint_padding_m": 11.0
+        },
+        {
+          "radius_m": 28.0,
+          "axial_spacing_m": 15.0,
+          "circumferential_points": 12,
+          "endpoint_padding_m": 15.0
+        }
       ]
     },
     {
@@ -394,49 +492,42 @@
       "kind": "strainmeter_sensor",
       "purpose": "Shallow coupled strainmeter",
       "material_id": 7,
-      "color_hint": "green",
+      "surface_marker": 12,
       "tag_shape": "sphere",
       "center_xyz_m": [
         5160.0,
         5185.0,
-        30.0
+        -720.0
       ],
-      "tag_radius_m": 5.0,
+      "tag_radius_m": 0.25,
       "source_sensor_id": "AVN2",
-      "yaw_deg": 31.0,
-      "outer_refinement_radius_m": 50.0,
-      "refinement_bands": [
-        {
-          "outer_radius_m": 4.0,
-          "spacing_m": 1.5
-        },
-        {
-          "outer_radius_m": 8.0,
-          "spacing_m": 3.0
-        },
-        {
-          "outer_radius_m": 16.0,
-          "spacing_m": 6.0
-        },
-        {
-          "outer_radius_m": 30.0,
-          "spacing_m": 10.0
-        },
-        {
-          "outer_radius_m": 50.0,
-          "spacing_m": 17.0
-        }
-      ],
       "local_point_stats": {
-        "points_added": 1183,
-        "attempted": 3689,
-        "accepted": 1182,
-        "rejected_outside_domain": 336,
-        "rejected_minimum_separation": 287
+        "surface_points": 42,
+        "surface_facets": 80,
+        "surface_rings": 0,
+        "refinement_points": 420,
+        "attempted": 420,
+        "accepted": 420,
+        "rejected_domain": 0,
+        "rejected_spacing": 0,
+        "points_added": 462
       },
-      "hec_local_uv_m": [
-        198.24093798659823,
-        143.26733928636253
+      "surface_topology": {
+        "facets": 80,
+        "edges": 120,
+        "bad_edges": 0
+      },
+      "geodesic_shell_radii_m": [
+        0.35,
+        0.6,
+        1.0,
+        1.7,
+        2.8,
+        4.5,
+        7.0,
+        10.5,
+        15.5,
+        22.0
       ]
     },
     {
@@ -444,49 +535,42 @@
       "kind": "strainmeter_sensor",
       "purpose": "Shallow coupled strainmeter",
       "material_id": 8,
-      "color_hint": "green",
+      "surface_marker": 13,
       "tag_shape": "sphere",
       "center_xyz_m": [
         5460.0,
         5185.0,
-        30.0
+        -720.0
       ],
-      "tag_radius_m": 5.0,
+      "tag_radius_m": 0.25,
       "source_sensor_id": "AVN87",
-      "yaw_deg": -23.0,
-      "outer_refinement_radius_m": 50.0,
-      "refinement_bands": [
-        {
-          "outer_radius_m": 4.0,
-          "spacing_m": 1.5
-        },
-        {
-          "outer_radius_m": 8.0,
-          "spacing_m": 3.0
-        },
-        {
-          "outer_radius_m": 16.0,
-          "spacing_m": 6.0
-        },
-        {
-          "outer_radius_m": 30.0,
-          "spacing_m": 10.0
-        },
-        {
-          "outer_radius_m": 50.0,
-          "spacing_m": 17.0
-        }
-      ],
       "local_point_stats": {
-        "points_added": 1211,
-        "attempted": 3640,
-        "accepted": 1210,
-        "rejected_outside_domain": 336,
-        "rejected_minimum_separation": 272
+        "surface_points": 42,
+        "surface_facets": 80,
+        "surface_rings": 0,
+        "refinement_points": 420,
+        "attempted": 420,
+        "accepted": 420,
+        "rejected_domain": 0,
+        "rejected_spacing": 0,
+        "points_added": 462
       },
-      "hec_local_uv_m": [
-        224.38766081089568,
-        442.1257487138862
+      "surface_topology": {
+        "facets": 80,
+        "edges": 120,
+        "bad_edges": 0
+      },
+      "geodesic_shell_radii_m": [
+        0.35,
+        0.6,
+        1.0,
+        1.7,
+        2.8,
+        4.5,
+        7.0,
+        10.5,
+        15.5,
+        22.0
       ]
     },
     {
@@ -494,101 +578,45 @@
       "kind": "strainmeter_sensor",
       "purpose": "Deep strainmeter near HEC",
       "material_id": 9,
-      "color_hint": "green",
+      "surface_marker": 14,
       "tag_shape": "sphere",
       "center_xyz_m": [
         5350.0,
         4720.0,
-        520.0
+        -230.0
       ],
-      "tag_radius_m": 5.0,
+      "tag_radius_m": 0.25,
       "source_sensor_id": "AVN31",
-      "yaw_deg": 11.0,
-      "outer_refinement_radius_m": 50.0,
-      "refinement_bands": [
-        {
-          "outer_radius_m": 4.0,
-          "spacing_m": 1.5
-        },
-        {
-          "outer_radius_m": 8.0,
-          "spacing_m": 3.0
-        },
-        {
-          "outer_radius_m": 16.0,
-          "spacing_m": 6.0
-        },
-        {
-          "outer_radius_m": 30.0,
-          "spacing_m": 10.0
-        },
-        {
-          "outer_radius_m": 50.0,
-          "spacing_m": 17.0
-        }
-      ],
       "local_point_stats": {
-        "points_added": 1263,
-        "attempted": 3473,
-        "accepted": 1262,
-        "rejected_outside_domain": 0,
-        "rejected_minimum_separation": 288
+        "surface_points": 42,
+        "surface_facets": 80,
+        "surface_rings": 0,
+        "refinement_points": 420,
+        "attempted": 420,
+        "accepted": 420,
+        "rejected_domain": 0,
+        "rejected_spacing": 0,
+        "points_added": 462
       },
-      "hec_local_uv_m": [
-        -248.43000550400842,
-        373.07175230145526
+      "surface_topology": {
+        "facets": 80,
+        "edges": 120,
+        "bad_edges": 0
+      },
+      "geodesic_shell_radii_m": [
+        0.35,
+        0.6,
+        1.0,
+        1.7,
+        2.8,
+        4.5,
+        7.0,
+        10.5,
+        15.5,
+        22.0
       ]
     }
   ],
-  "strainmeters": [
-    {
-      "sensor_id": "AVN2",
-      "purpose": "Shallow coupled strainmeter",
-      "location_xyz_m": [
-        5160.0,
-        5185.0,
-        30.0
-      ],
-      "material_id": 7,
-      "representation": "spherical_sensor_pod",
-      "tag_radius_m": 5.0
-    },
-    {
-      "sensor_id": "AVN87",
-      "purpose": "Shallow coupled strainmeter",
-      "location_xyz_m": [
-        5460.0,
-        5185.0,
-        30.0
-      ],
-      "material_id": 8,
-      "representation": "spherical_sensor_pod",
-      "tag_radius_m": 5.0
-    },
-    {
-      "sensor_id": "AVN31",
-      "purpose": "Deep strainmeter near HEC",
-      "location_xyz_m": [
-        5350.0,
-        4720.0,
-        520.0
-      ],
-      "material_id": 9,
-      "representation": "spherical_sensor_pod",
-      "tag_radius_m": 5.0
-    }
-  ],
-  "plc": {
-    "point_count": 45103,
-    "facet_count": 84848,
-    "holes": 0,
-    "regions": 4,
-    "contains_hec_facets": false,
-    "contains_hec_region": false,
-    "contains_target_facets": false,
-    "contains_target_regions": false,
-    "contains_target_local_mesh_points": true
-  },
   "boundary_markers": {
     "top": 1,
     "bottom": 2,

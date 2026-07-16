@@ -1,4 +1,4 @@
 quantity,count
-nodes,45116
-tetrahedra,246932
+nodes,95218
+tetrahedra,532924
 postprocess_tet_limit,900000
