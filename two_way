@@ -1,0 +1,81 @@
+# ============================================================
+# PFLOTRAN: TWO-WAY RESTART TEST (1 MINUTE)
+# ============================================================
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+    SUBSURFACE_GEOMECHANICS geomech
+      OPTIONS
+        FLOW_COUPLING TWO_WAY_COUPLED
+      /
+    /
+  /
+
+  RESTART
+    FILENAME preload_state-restart.h5
+    RESET_TO_TIME_ZERO
+  /
+END
+
+# ============================================================
+# SUBSURFACE FLOW
+# ============================================================
+SUBSURFACE
+
+GRID
+  TYPE UNSTRUCTURED_EXPLICIT bartlesville_hec.uge
+END
+
+NUMERICAL_METHODS FLOW
+  TIMESTEPPER
+    INITIAL_TIMESTEP_SIZE 1.d-3 minute
+    MAXIMUM_TIMESTEP_SIZE 1.d-2 minute
+    PRESSURE_CHANGE_GOVERNOR 1.d2
+    SATURATION_CHANGE_GOVERNOR 5.d-2
+    TIMESTEP_REDUCTION_FACTOR 0.25d0
+    MAXIMUM_CONSECUTIVE_TS_CUTS 40
+  /
+  NEWTON_SOLVER
+    MAXIMUM_NUMBER_OF_ITERATIONS 50
+  /
+  LINEAR_SOLVER
+    SOLVER BCGS
+    PRECONDITIONER ASM
+    MAXIMUM_NUMBER_OF_ITERATIONS 200
+    RTOL 1.d-8
+  /
+END
+
+TIME
+  FINAL_TIME 1.d0 minute
+END
+
+REFERENCE_PRESSURE 5.3E6
+
+# keep the same MATERIAL_PROPERTY, CHARACTERISTIC_CURVES,
+# REGION, FLOW_CONDITION, INITIAL_CONDITION, SOURCE_SINK,
+# BOUNDARY_CONDITION, STRATA blocks as in bartlesville_preload.in
+# but you can keep injection zero for this laptop test:
+#
+# FLOW_CONDITION injection
+#   ...
+#   RATE LIST
+#     TIME_UNITS minute
+#     DATA_UNITS m^3/s
+#     0.d0 0.d0
+#     1.d0 0.d0
+#   /
+# END
+
+# keep the same GEOMECHANICS block as preload, including:
+#   GEOMECHANICS_GRID GRAVITY 0.d0 0.d0 -9.81d0
+#   GEOMECHANICS_TIME COUPLING_TIMESTEP_SIZE 1.d-3 minute
+#   same regions, materials, and roller/fixed BCs
+
+END_SUBSURFACE
+END_GEOMECHANICS
