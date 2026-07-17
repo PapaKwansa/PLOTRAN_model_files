@@ -143,14 +143,15 @@ def pure_outer_face_masks(
         + east.astype(int)
         + west.astype(int)
     )
+   
     return {
-        "top": top & (hit_count == 1),
-        "bottom": bottom & (hit_count == 1),
-        "north": north & (hit_count == 1),
-        "south": south & (hit_count == 1),
-        "east": east & (hit_count == 1),
-        "west": west & (hit_count == 1),
-    }
+    "top": top,
+    "bottom": bottom,
+    "north": north,
+    "south": south,
+    "east": east,
+    "west": west,
+}
 
 
 def hec_local_coordinates(
