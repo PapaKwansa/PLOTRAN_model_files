@@ -543,6 +543,8 @@ TODO(geh): add DatasetPrint()
 --------------------------------------------------------------------------------
   Beginning setup of GEOMECH KSP
   Finished setting up GEOMECH KSP
+Geomechanics: starting geostatic preload hook.
+Geomechanics: geostatic preload hook complete.
 
 FLOW Time Stepper SNES
       maximum number of steps: 999999
@@ -649,7 +651,7 @@ GEOMECHANICS Linear Solver
 == GEOMECHANICS ================================================================
 
  Step      1 Time=  2.40000E-06 Dt=  2.40000E-06 [hour] conv_reason: 2
-  linear =   232 [       232] cuts =  0 [   0]
+  linear =   279 [       279] cuts =  0 [   0]
 
 == RICHARDS FLOW ===============================================================
   0 2r: 6.52E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.68E-06 iu: 0.00E+00 rsn:   0
@@ -664,7 +666,7 @@ GEOMECHANICS Linear Solver
 == GEOMECHANICS ================================================================
 
  Step      2 Time=  7.20000E-06 Dt=  4.80000E-06 [hour] conv_reason: 2
-  linear =   350 [       582] cuts =  0 [   0]
+  linear =   257 [       536] cuts =  0 [   0]
 
 == RICHARDS FLOW ===============================================================
   0 2r: 6.72E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.80E-06 iu: 0.00E+00 rsn:   0
@@ -675,90 +677,3 @@ GEOMECHANICS Linear Solver
   --> SNES Linear/Non-Linear Iterations = 1 / 1
   --> SNES Residual: 0.256352E-05 0.269226E-10 0.178814E-06
   --> max change: dpmx=   3.0228E-05
-
-== GEOMECHANICS ================================================================
-
- Step      3 Time=  1.68000E-05 Dt=  9.60000E-06 [hour] conv_reason: 2
-  linear =   272 [       854] cuts =  0 [   0]
-
-== RICHARDS FLOW ===============================================================
-  0 2r: 6.65E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.77E-06 iu: 0.00E+00 rsn:   0
-  1 2r: 9.40E-07 2x: 1.29E+09 2u: 4.91E-03 ir: 8.94E-08 iu: 6.05E-05 rsn: stol
-
- Step      4 Time=  3.60000E-05 Dt=  1.92000E-05 [hour] conv_reason: 4
-  newton =   1 [       4] linear =     1 [         4] cuts =  0 [   0]
-  --> SNES Linear/Non-Linear Iterations = 1 / 1
-  --> SNES Residual: 0.940120E-06 0.987334E-11 0.894070E-07
-  --> max change: dpmx=   6.0456E-05
-
-== GEOMECHANICS ================================================================
-
- Step      4 Time=  3.60000E-05 Dt=  1.92000E-05 [hour] conv_reason: 2
-  linear =   259 [      1113] cuts =  0 [   0]
-
-== RICHARDS FLOW ===============================================================
-  0 2r: 6.67E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.77E-06 iu: 0.00E+00 rsn:   0
-  1 2r: 5.52E-07 2x: 1.29E+09 2u: 9.81E-03 ir: 2.98E-08 iu: 1.17E-04 rsn: stol
-
- Step      5 Time=  7.44000E-05 Dt=  3.84000E-05 [hour] conv_reason: 4
-  newton =   1 [       5] linear =     1 [         5] cuts =  0 [   0]
-  --> SNES Linear/Non-Linear Iterations = 1 / 1
-  --> SNES Residual: 0.552021E-06 0.579744E-11 0.298023E-07
-  --> max change: dpmx=   1.1732E-04
-
-== GEOMECHANICS ================================================================
-
- Step      5 Time=  7.44000E-05 Dt=  3.84000E-05 [hour] conv_reason: 2
-  linear =   281 [      1394] cuts =  0 [   0]
-
-== RICHARDS FLOW ===============================================================
-  0 2r: 6.66E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.79E-06 iu: 0.00E+00 rsn:   0
-  1 2r: 5.88E-07 2x: 1.29E+09 2u: 1.96E-02 ir: 2.98E-08 iu: 2.35E-04 rsn: stol
-
- Step      6 Time=  1.51200E-04 Dt=  7.68000E-05 [hour] conv_reason: 4
-  newton =   1 [       6] linear =     1 [         6] cuts =  0 [   0]
-  --> SNES Linear/Non-Linear Iterations = 1 / 1
-  --> SNES Residual: 0.587635E-06 0.617147E-11 0.298023E-07
-  --> max change: dpmx=   2.3484E-04
-
-== GEOMECHANICS ================================================================
-
- Step      6 Time=  1.51200E-04 Dt=  7.68000E-05 [hour] conv_reason: 2
-  linear =   334 [      1728] cuts =  0 [   0]
-
-== RICHARDS FLOW ===============================================================
-  0 2r: 6.66E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.78E-06 iu: 0.00E+00 rsn:   0
-  1 2r: 4.43E-07 2x: 1.29E+09 2u: 3.90E-02 ir: 2.98E-08 iu: 4.69E-04 rsn: stol
-
- Step      7 Time=  3.04800E-04 Dt=  1.53600E-04 [hour] conv_reason: 4
-  newton =   1 [       7] linear =     1 [         7] cuts =  0 [   0]
-  --> SNES Linear/Non-Linear Iterations = 1 / 1
-  --> SNES Residual: 0.443261E-06 0.465523E-11 0.298023E-07
-  --> max change: dpmx=   4.6927E-04
-
-== GEOMECHANICS ================================================================
-
- Step      7 Time=  3.04800E-04 Dt=  1.53600E-04 [hour] conv_reason: 2
-  linear =   366 [      2094] cuts =  0 [   0]
-
-== RICHARDS FLOW ===============================================================
-  0 2r: 6.66E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.78E-06 iu: 0.00E+00 rsn:   0
-  1 2r: 2.59E-07 2x: 1.29E+09 2u: 7.77E-02 ir: 1.49E-08 iu: 9.39E-04 rsn: stol
-
- Step      8 Time=  6.12000E-04 Dt=  3.07200E-04 [hour] conv_reason: 4
-  newton =   1 [       8] linear =     1 [         8] cuts =  0 [   0]
-  --> SNES Linear/Non-Linear Iterations = 1 / 1
-  --> SNES Residual: 0.259278E-06 0.272299E-11 0.149012E-07
-  --> max change: dpmx=   9.3892E-04
-
-== GEOMECHANICS ================================================================
-
- Step      8 Time=  6.12000E-04 Dt=  3.07200E-04 [hour] conv_reason: 2
-  linear =   273 [      2367] cuts =  0 [   0]
-
-== RICHARDS FLOW ===============================================================
-  0 2r: 6.65E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.78E-06 iu: 0.00E+00 rsn:   0
-  1 2r: 1.23E-07 2x: 1.29E+09 2u: 1.55E-01 ir: 7.45E-09 iu: 1.88E-03 rsn: stol
-
- Step      9 Time=  1.22640E-03 Dt=  6.14400E-04 [hour] conv_reason: 4
-  newton =   1 [       9] linear =     1 [         9] cuts =  0 [   0]
