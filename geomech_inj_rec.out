@@ -651,7 +651,7 @@ GEOMECHANICS Linear Solver
 == GEOMECHANICS ================================================================
 
  Step      1 Time=  2.40000E-06 Dt=  2.40000E-06 [hour] conv_reason: 2
-  linear =   279 [       279] cuts =  0 [   0]
+  linear =   223 [       223] cuts =  0 [   0]
 
 == RICHARDS FLOW ===============================================================
   0 2r: 6.52E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.68E-06 iu: 0.00E+00 rsn:   0
@@ -666,7 +666,7 @@ GEOMECHANICS Linear Solver
 == GEOMECHANICS ================================================================
 
  Step      2 Time=  7.20000E-06 Dt=  4.80000E-06 [hour] conv_reason: 2
-  linear =   257 [       536] cuts =  0 [   0]
+  linear =   212 [       435] cuts =  0 [   0]
 
 == RICHARDS FLOW ===============================================================
   0 2r: 6.72E-05 2x: 0.00E+00 2u: 0.00E+00 ir: 2.80E-06 iu: 0.00E+00 rsn:   0
