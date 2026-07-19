@@ -4,7 +4,7 @@
 
 This repository contains a PFLOTRAN hydro-mechanical model developed for permeability inversion using strainmeter observations from the Bartlesville Formation.
 
-The model represents a four-layer geological system with an embedded high-permeability HEC (Hydraulically Enhanced Connectivity) lens. Injection occurs within the HEC while three strainmeters record the resulting deformation.
+The model represents a four-layer geological system with an embedded high-permeability HEC (High Energy Channel) lens. Injection occurs within the HEC while three strainmeters record the resulting deformation.
 
 Current objectives include:
 
@@ -140,7 +140,7 @@ Linear poroelasticity
 
 ## Two-way coupling
 
-Currently unstable.
+Currently unstable with initial lithostatic stresses
 
 The coupled simulation diverges during the second coupled timestep even with zero injection.
 

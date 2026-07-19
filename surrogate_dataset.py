@@ -7,7 +7,7 @@ Workflow:
 - injection active from 0 to 19 h
 - shut-in from 19 to 96 h in the same run
 - no checkpoint / restart handoff
-- Latin hypercube sampling over the four layer permeabilities
+- Latin hypercube sampling over four layer permeabilities + HEC permeability
 
 This version is Python 3.6 compatible:
 - no SciPy dependency
@@ -19,13 +19,13 @@ Assumptions for the current Bartlesville HEC workflow:
 - the mesh files are bartlesville_hec.uge / bartlesville_hec.ugi
 - geomechanics gravity is off
 - coupling timestep is 1.d-3 hour
-- only overburden, bartlesville_sand, basal_layer, underburden are sampled
+- sampled materials are:
+    overburden, bartlesville_sand, basal_layer, underburden, hec
 """
 
 import argparse
 import csv
 import json
-import math
 import os
 import re
 import shutil
@@ -38,26 +38,35 @@ import h5py
 import numpy as np
 
 
-MATERIALS = ["overburden", "bartlesville_sand", "basal_layer", "underburden"]
+MATERIALS = [
+    "overburden",
+    "bartlesville_sand",
+    "basal_layer",
+    "underburden",
+    "hec",
+]
 
 # Current baseline permeability tensors from the working deck.
+# We preserve anisotropy by scaling the whole tensor with one scalar factor.
 BASE_TENSORS = {
     "overburden": (9.869233e-18, 9.869233e-18, 9.869233e-19),
     "bartlesville_sand": (4.9346165e-15, 4.9346165e-15, 4.9346165e-17),
     "basal_layer": (9.869233e-18, 9.869233e-18, 9.869233e-19),
     "underburden": (9.869233e-18, 9.869233e-18, 9.869233e-19),
+    "hec": (4.9346165e-13, 4.9346165e-13, 9.869233e-17),
 }
 
-# Absolute target ranges for the scalar permeability magnitude of each layer.
-# The anisotropy in the template deck is preserved by scaling the whole tensor.
+# Log10 bounds for the scalar permeability target values.
+# The HEC bounds are centered around the current HEC magnitude.
 LOG10_TARGET_BOUNDS = {
     "overburden": (-18.0, -16.0),
     "bartlesville_sand": (-14.0, -12.0),
     "basal_layer": (-19.0, -17.0),
     "underburden": (-18.0, -16.0),
+    "hec": (-13.0, -12.0),
 }
 
-# Wellbore HDF5 indices previously identified for the North Avant / Bartlesville model.
+# Wellbore HDF5 indices previously identified for the Bartlesville model.
 WELLBORE_H5_INDICES = np.array([
     354057, 354058, 354059, 354060, 354061, 354062, 354063, 354064,
     375524, 375525, 375526, 375527, 375528, 375529, 375530, 375531,
@@ -461,14 +470,12 @@ def prepare_sample_run_dir(
 
     for material in MATERIALS:
         base_x, base_y, base_z = BASE_TENSORS[material]
-        base_scalar = base_x  # preserve anisotropy by scaling the whole tensor
-
+        base_scalar = base_x
         target_k = k_map[material]
         scale = target_k / base_scalar
         new_x = base_x * scale
         new_y = base_y * scale
         new_z = base_z * scale
-
         deck_text = replace_perm_tensor_in_block(deck_text, material, new_x, new_y, new_z)
 
     write_text(sample_dir / "pflotran.in", deck_text)
@@ -476,6 +483,9 @@ def prepare_sample_run_dir(
 
 
 def run_pflotran(run_dir: Path, pflotran_bin: str, mpiexec: str, nprocs: int) -> None:
+    """
+    Launch PFLOTRAN in the sample directory.
+    """
     cmd = [mpiexec, "-n", str(nprocs), pflotran_bin]
     env = os.environ.copy()
     env["OMP_NUM_THREADS"] = "1"
@@ -581,6 +591,7 @@ def main() -> int:
                 "bartlesville_sand_k": k_map["bartlesville_sand"],
                 "basal_layer_k": k_map["basal_layer"],
                 "underburden_k": k_map["underburden"],
+                "hec_k": k_map["hec"],
                 "run_dir": str(sample_dir),
             })
             print("[OK] sample {:04d}".format(sample_id))
@@ -597,6 +608,7 @@ def main() -> int:
                 "bartlesville_sand_k": k_map.get("bartlesville_sand", np.nan),
                 "basal_layer_k": k_map.get("basal_layer", np.nan),
                 "underburden_k": k_map.get("underburden", np.nan),
+                "hec_k": k_map.get("hec", np.nan),
                 "run_dir": str(sample_dir),
             })
             print("[FAIL] sample {:04d}: {}".format(sample_id, e), file=sys.stderr)
@@ -632,7 +644,7 @@ def main() -> int:
             f,
             fieldnames=[
                 "sample_id", "status",
-                "overburden_k", "bartlesville_sand_k", "basal_layer_k", "underburden_k",
+                "overburden_k", "bartlesville_sand_k", "basal_layer_k", "underburden_k", "hec_k",
                 "run_dir",
             ],
         )
@@ -657,7 +669,8 @@ def main() -> int:
         "notes": [
             "One coupled PFLOTRAN run per sample.",
             "Injection is active from 0 to 19 h, then set to zero through 96 h.",
-            "The four sampled parameters are the layer permeabilities only.",
+            "The five sampled parameters are the layer permeabilities plus HEC.",
+            "Injection borehole is kept fixed as a source-sink tag region.",
             "Current deck template: geomech_inj_rec.in.",
         ],
     }
