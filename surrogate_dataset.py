@@ -66,13 +66,13 @@ LOG10_TARGET_BOUNDS = {
     "hec": (-13.0, -12.0),
 }
 
-# Wellbore HDF5 indices previously identified for the Bartlesville model.
-WELLBORE_H5_INDICES = np.array([
-    354057, 354058, 354059, 354060, 354061, 354062, 354063, 354064,
-    375524, 375525, 375526, 375527, 375528, 375529, 375530, 375531,
-    437633, 437634, 437635, 437636, 437637, 437638, 437639, 437640,
-    471238, 471239, 471240, 471241, 471242, 471243, 471244, 471245,
-], dtype=int)
+# Observation locations are read from mesh-region .vset files at runtime.
+PRESSURE_OBSERVATION_VSET = "injection_borehole.vset"
+STRAIN_OBSERVATION_VSETS = [
+    "AVN2.vset",
+    "AVN31.vset",
+    "AVN87.vset",
+]
 
 STRAIN_COMPONENTS = [
     "strain_xx", "strain_yy", "strain_zz",
@@ -197,6 +197,54 @@ def write_text(path: Path, text: str) -> None:
 
 def normalize_name(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", name.lower())
+
+
+
+def load_vset_indices(vset_path: Path) -> np.ndarray:
+    """
+    Load integer indices from a .vset file.
+
+    The parser accepts whitespace-separated integer tokens and ignores
+    alphabetic labels such as region names.
+    """
+    if not vset_path.exists():
+        raise FileNotFoundError("Missing vset file: {}".format(vset_path))
+
+    indices = []
+    with vset_path.open("r", encoding="utf-8", errors="ignore") as f:
+        for raw_line in f:
+            for token in raw_line.split():
+                if re.fullmatch(r"[+-]?\d+", token):
+                    indices.append(int(token))
+
+    if not indices:
+        raise RuntimeError("No integer indices found in {}".format(vset_path))
+
+    # Deterministic uniqueness while preserving first appearance.
+    seen = set()
+    unique = []
+    for idx in indices:
+        if idx not in seen:
+            seen.add(idx)
+            unique.append(idx)
+    return np.asarray(unique, dtype=int)
+
+
+def load_observation_indices(sample_dir: Path) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Return (pressure_indices, strain_indices) from the sample directory.
+    """
+    pressure_idx = load_vset_indices(sample_dir / PRESSURE_OBSERVATION_VSET)
+
+    strain_chunks = []
+    for vset_name in STRAIN_OBSERVATION_VSETS:
+        strain_chunks.append(load_vset_indices(sample_dir / vset_name))
+
+    if not strain_chunks:
+        raise RuntimeError("No strain observation vsets configured.")
+
+    strain_idx = np.unique(np.concatenate(strain_chunks).astype(int))
+    return pressure_idx, strain_idx
 
 
 def generate_lhs_unit_samples(n_samples: int, n_dim: int, seed: int) -> np.ndarray:
@@ -373,7 +421,7 @@ def compute_well_stats_at_time(arr: np.ndarray, well_idx: np.ndarray) -> Dict[st
     }
 
 
-def extract_pressure_series(h5_path: Path, well_idx: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def extract_pressure_series(h5_path: Path, obs_idx: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     with h5py.File(str(h5_path), "r") as f:
         groups = find_time_groups(f, PRESSURE_DATASET_CANDIDATES)
         if not groups:
@@ -387,11 +435,11 @@ def extract_pressure_series(h5_path: Path, well_idx: np.ndarray) -> Tuple[np.nda
         for t, group_path in groups:
             grp = f[group_path]
             pressure = find_dataset_in_group(grp, PRESSURE_DATASET_CANDIDATES)
-            if well_idx.max() >= len(pressure):
+            if obs_idx.max() >= len(pressure):
                 raise IndexError(
                     "Well index out of bounds for pressure array in {} at time {} h.".format(h5_path, t)
                 )
-            stats = compute_well_stats_at_time(pressure, well_idx)
+            stats = compute_well_stats_at_time(pressure, obs_idx)
             times.append(t)
             med.append(stats["median"])
             pmin.append(stats["min"])
@@ -405,7 +453,7 @@ def extract_pressure_series(h5_path: Path, well_idx: np.ndarray) -> Tuple[np.nda
     )
 
 
-def extract_geomech_series(h5_path: Path, well_idx: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def extract_geomech_series(h5_path: Path, obs_idx: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     with h5py.File(str(h5_path), "r") as f:
         groups = find_time_groups(f, STRAIN_DATASET_CANDIDATES)
         if not groups:
@@ -427,11 +475,11 @@ def extract_geomech_series(h5_path: Path, well_idx: np.ndarray) -> Tuple[np.ndar
                     "GEOMECH_" + comp.upper().replace("_", " "),
                 ]
                 arr = find_dataset_in_group(grp, candidates)
-                if well_idx.max() >= len(arr):
+                if obs_idx.max() >= len(arr):
                     raise IndexError(
                         "Well index out of bounds for strain array in {} at time {} h.".format(h5_path, t)
                     )
-                comp_vals.append(float(np.nanmedian(arr[well_idx])))
+                comp_vals.append(float(np.nanmedian(arr[obs_idx])))
 
             comp_vals_arr = np.asarray(comp_vals, dtype=float)
             times.append(t)
@@ -500,7 +548,7 @@ def run_pflotran(run_dir: Path, pflotran_bin: str, mpiexec: str, nprocs: int) ->
     subprocess.run(cmd, cwd=str(run_dir), check=True, env=env)
 
 
-def read_sample_outputs(sample_dir: Path, well_idx: np.ndarray) -> Dict[str, np.ndarray]:
+def read_sample_outputs(sample_dir: Path) -> Dict[str, np.ndarray]:
     flow_h5 = sample_dir / "pflotran.h5"
     geomech_h5 = sample_dir / "pflotran-geomech.h5"
 
@@ -509,8 +557,10 @@ def read_sample_outputs(sample_dir: Path, well_idx: np.ndarray) -> Dict[str, np.
     if not geomech_h5.exists():
         raise FileNotFoundError("Geomechanics output missing: {}".format(geomech_h5))
 
-    t_p, p_med, p_min, p_max = extract_pressure_series(flow_h5, well_idx)
-    t_s, s_med, ev = extract_geomech_series(geomech_h5, well_idx)
+    pressure_idx, strain_idx = load_observation_indices(sample_dir)
+
+    t_p, p_med, p_min, p_max = extract_pressure_series(flow_h5, pressure_idx)
+    t_s, s_med, ev = extract_geomech_series(geomech_h5, strain_idx)
 
     return {
         "pressure_times": t_p,
@@ -520,6 +570,8 @@ def read_sample_outputs(sample_dir: Path, well_idx: np.ndarray) -> Dict[str, np.
         "strain_times": t_s,
         "strain_median": s_med,
         "volumetric_strain": ev,
+        "pressure_obs_count": np.asarray([len(pressure_idx)], dtype=int),
+        "strain_obs_count": np.asarray([len(strain_idx)], dtype=int),
     }
 
 
@@ -564,7 +616,7 @@ def main() -> int:
 
         try:
             run_pflotran(sample_dir, args.pflotran_bin, args.mpiexec, args.nprocs)
-            obs = read_sample_outputs(sample_dir, WELLBORE_H5_INDICES)
+            obs = read_sample_outputs(sample_dir)
 
             if pressure_times_ref is None:
                 pressure_times_ref = obs["pressure_times"]
@@ -661,7 +713,10 @@ def main() -> int:
         "materials": MATERIALS,
         "pressure_times": pressure_times_ref.tolist() if pressure_times_ref is not None else None,
         "strain_times": strain_times_ref.tolist() if strain_times_ref is not None else None,
-        "wellbore_h5_indices": WELLBORE_H5_INDICES.tolist(),
+        "pressure_observation_vset": PRESSURE_OBSERVATION_VSET,
+        "strain_observation_vsets": STRAIN_OBSERVATION_VSETS,
+        "pressure_obs_count": int(load_vset_indices(model_dir / PRESSURE_OBSERVATION_VSET).size),
+        "strain_obs_count": int(np.unique(np.concatenate([load_vset_indices(model_dir / v) for v in STRAIN_OBSERVATION_VSETS])).size),
         "base_tensor_values": {
             m: list(BASE_TENSORS[m]) for m in MATERIALS
         },
