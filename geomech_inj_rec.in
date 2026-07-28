@@ -1,4 +1,25 @@
 # ============================================================
+# Reference geological model
+#
+# Top                 z =   0 m
+#
+# Overburden          0      to -500 m
+# Bartlesville       -500    to -530 m
+# Basal layer        -530    to -535 m
+# Underburden        -535    to -1535 m
+#
+# HEC
+#   Material ID 5
+#   Host rock : Bartlesville sandstone
+#   z = -530 to -525 m
+#
+# Injection interval
+#   Material ID 6
+#   Entirely contained within the HEC
+#
+# Sensor pods
+#   Material IDs 7–9
+#==============================================================
 # PFLOTRAN: FLOW + POROELASTIC GEOMECHANICS (INJECTION + RECOVERY)
 # Updated for the new Bartlesville HEC mesh workflow
 # Uses:

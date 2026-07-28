@@ -2,14 +2,14 @@
   "coordinate_convention": {
     "description": "elevation relative to model top",
     "top_z_m": 0.0,
-    "bottom_z_m": -750.0,
-    "conversion_from_previous_geometry": "z_new = z_old - 750"
+    "bottom_z_m": -1535.0,
+    "conversion_from_previous_geometry": "Bartlesville sand now sits above the basal layer; the HEC is placed inside Bartlesville directly above the basal interface; model bottom restored to z=-1535 m; strainmeter depths converted to negative-z convention"
   },
   "domain": {
     "min": [
       0.0,
       0.0,
-      -750.0
+      -1535.0
     ],
     "max": [
       10000.0,
@@ -19,177 +19,121 @@
     "size": [
       10000.0,
       10000.0,
-      750.0
+      1535.0
     ]
   },
   "layers": [
     {
       "number": 1,
-      "material_id": 4,
-      "name": "underburden",
-      "z_min": -750.0,
-      "z_max": -550.0
+      "material_id": 1,
+      "name": "overburden",
+      "z_min": -500.0,
+      "z_max": 0.0
     },
     {
       "number": 2,
       "material_id": 2,
       "name": "bartlesville_sand",
-      "z_min": -550.0,
-      "z_max": -530.0
+      "z_min": -530.0,
+      "z_max": -500.0
     },
     {
       "number": 3,
       "material_id": 3,
       "name": "basal_layer",
-      "z_min": -530.0,
-      "z_max": -500.0
+      "z_min": -535.0,
+      "z_max": -530.0
     },
     {
       "number": 4,
-      "material_id": 1,
-      "name": "overburden",
-      "z_min": -500.0,
-      "z_max": 0.0
+      "material_id": 4,
+      "name": "underburden",
+      "z_min": -1535.0,
+      "z_max": -535.0
     }
   ],
   "vertical_bands": [
     {
-      "label": "L1_bottom_coarse",
-      "z_min": -750.0,
-      "z_max": -650.0,
-      "geological_layer": 1,
-      "note": "largest cells near bottom boundary"
+      "label": "UB_bottom_coarse",
+      "z_min": -1535.0,
+      "z_max": -1300.0,
+      "geological_layer": 4,
+      "note": "deepest underburden"
     },
     {
-      "label": "L1_lower_transition",
-      "z_min": -650.0,
-      "z_max": -590.0,
-      "geological_layer": 1,
-      "note": "transition toward refined beds"
+      "label": "UB_mid_coarse",
+      "z_min": -1300.0,
+      "z_max": -1050.0,
+      "geological_layer": 4,
+      "note": "deep underburden"
     },
     {
-      "label": "L1_mid_transition",
-      "z_min": -590.0,
-      "z_max": -565.0,
-      "geological_layer": 1,
-      "note": "transition toward refined beds"
+      "label": "UB_upper_transition",
+      "z_min": -1050.0,
+      "z_max": -535.0,
+      "geological_layer": 4,
+      "note": "approaches basal layer"
     },
     {
-      "label": "L1_upper_transition",
-      "z_min": -565.0,
-      "z_max": -550.0,
-      "geological_layer": 1,
-      "note": "matches fine spacing near layer 2"
-    },
-    {
-      "label": "L2_lower_refined",
-      "z_min": -550.0,
-      "z_max": -540.0,
-      "geological_layer": 2,
-      "note": "refined Bartlesville interval"
-    },
-    {
-      "label": "L2_upper_refined",
-      "z_min": -540.0,
+      "label": "BASAL_lower_refined",
+      "z_min": -535.0,
       "z_max": -530.0,
-      "geological_layer": 2,
-      "note": "refined Bartlesville interval"
+      "geological_layer": 3,
+      "note": "basal layer"
     },
     {
-      "label": "L3_lower_refined",
+      "label": "BARTLESVILLE_hec_band",
       "z_min": -530.0,
-      "z_max": -515.0,
-      "geological_layer": 3,
-      "note": "basal layer refined band"
+      "z_max": -525.0,
+      "geological_layer": 2,
+      "note": "HEC host interval in Bartlesville sandstone"
     },
     {
-      "label": "L3_upper_refined",
-      "z_min": -515.0,
+      "label": "BARTLESVILLE_upper_refined",
+      "z_min": -525.0,
       "z_max": -500.0,
-      "geological_layer": 3,
-      "note": "basal layer refined band"
+      "geological_layer": 2,
+      "note": "Bartlesville sandstone above the HEC"
     },
     {
-      "label": "L4_lower_refined",
+      "label": "OVERBURDEN_lower_transition",
       "z_min": -500.0,
       "z_max": -400.0,
-      "geological_layer": 4,
-      "note": "coarsening upward"
+      "geological_layer": 1,
+      "note": "lower overburden"
     },
     {
-      "label": "L4_transition_1",
+      "label": "OVERBURDEN_transition_1",
       "z_min": -400.0,
       "z_max": -250.0,
-      "geological_layer": 4,
-      "note": "coarsening toward HEC"
+      "geological_layer": 1,
+      "note": "middle overburden"
     },
     {
-      "label": "L4_hec_lower_matrix",
+      "label": "OVERBURDEN_transition_2",
       "z_min": -250.0,
-      "z_max": -225.0,
-      "geological_layer": 4,
-      "note": "matrix level below HEC"
-    },
-    {
-      "label": "L4_hec_center_lower",
-      "z_min": -225.0,
-      "z_max": -220.0,
-      "geological_layer": 4,
-      "note": "HEC centre support"
-    },
-    {
-      "label": "L4_hec_center_upper",
-      "z_min": -220.0,
-      "z_max": -215.0,
-      "geological_layer": 4,
-      "note": "HEC centre support"
-    },
-    {
-      "label": "L4_transition_2a",
-      "z_min": -215.0,
-      "z_max": -170.0,
-      "geological_layer": 4,
-      "note": "coarsening upward"
-    },
-    {
-      "label": "L4_transition_2b",
-      "z_min": -170.0,
-      "z_max": -135.0,
-      "geological_layer": 4,
-      "note": "coarsening upward"
-    },
-    {
-      "label": "L4_transition_2c",
-      "z_min": -135.0,
       "z_max": -100.0,
-      "geological_layer": 4,
-      "note": "coarsening upward"
+      "geological_layer": 1,
+      "note": "upper overburden"
     },
     {
-      "label": "L4_top_transition",
+      "label": "OVERBURDEN_top_transition",
       "z_min": -100.0,
       "z_max": 0.0,
-      "geological_layer": 4,
-      "note": "larger cells near top boundary"
+      "geological_layer": 1,
+      "note": "largest cells near the top boundary"
     }
   ],
   "z_levels_m": [
-    -750.0,
-    -650.0,
-    -590.0,
-    -565.0,
-    -550.0,
-    -540.0,
+    -1535.0,
+    -1300.0,
+    -1050.0,
+    -535.0,
     -530.0,
-    -515.0,
+    -525.0,
     -500.0,
     -400.0,
     -250.0,
-    -225.0,
-    -220.0,
-    -215.0,
-    -170.0,
-    -135.0,
     -100.0,
     0.0
   ],
@@ -339,31 +283,31 @@
   "meshing": {
     "strategy": "closed target PLCs plus staggered tube shells and rotated geodesic shells",
     "tetgen_default_flags": "-pnAef",
-    "point_count": 95106,
-    "facet_count": 58538,
+    "point_count": 52469,
+    "facet_count": 50242,
     "holes": 0,
     "regions": 8
   },
   "hec": {
     "name": "bartlesville_hec",
     "material_id": 5,
-    "host_material_id": 1,
+    "host_material_id": 2,
     "representation": "tag_only",
     "center": [
       5000.0,
       5000.0,
-      -220.0
+      -527.5
     ],
     "center_xyz_m": [
       5000.0,
       5000.0,
-      -220.0
+      -527.5
     ],
     "length_m": 580.0,
     "width_m": 300.0,
     "thickness_m": 5.0,
-    "bottom_z_m": -222.5,
-    "top_z_m": -217.5,
+    "bottom_z_m": -530.0,
+    "top_z_m": -525.0,
     "azimuth_deg_east_of_north": 5.0,
     "dip_deg": 0.0,
     "axes": {
@@ -392,8 +336,8 @@
       "method": "oriented_rectangular_prism_in_local_coordinates",
       "center_field": "center",
       "z_range_m": [
-        -222.5,
-        -217.5
+        -530.0,
+        -525.0
       ]
     }
   },
@@ -408,28 +352,28 @@
       "center_xyz_m": [
         5000.0,
         5000.0,
-        -109.0
+        -527.5
       ],
       "tag_radius_m": 0.75,
       "source_sensor_id": null,
       "local_point_stats": {
-        "surface_points": 2330,
-        "surface_facets": 4656,
-        "surface_rings": 291,
-        "refinement_points": 8860,
-        "attempted": 8956,
-        "accepted": 8860,
-        "rejected_domain": 96,
+        "surface_points": 58,
+        "surface_facets": 112,
+        "surface_rings": 7,
+        "refinement_points": 566,
+        "attempted": 566,
+        "accepted": 566,
+        "rejected_domain": 0,
         "rejected_spacing": 0,
-        "points_added": 11190
+        "points_added": 624
       },
       "surface_topology": {
-        "facets": 4656,
-        "edges": 6984,
+        "facets": 112,
+        "edges": 168,
         "bad_edges": 0
       },
-      "tag_z_min_m": -217.5,
-      "tag_z_max_m": -0.5,
+      "tag_z_min_m": -529.75,
+      "tag_z_max_m": -525.25,
       "tube_shells": [
         {
           "radius_m": 1.0,
@@ -497,7 +441,7 @@
       "center_xyz_m": [
         5160.0,
         5185.0,
-        -720.0
+        -30.0
       ],
       "tag_radius_m": 0.25,
       "source_sensor_id": "AVN2",
@@ -540,7 +484,7 @@
       "center_xyz_m": [
         5460.0,
         5185.0,
-        -720.0
+        -30.0
       ],
       "tag_radius_m": 0.25,
       "source_sensor_id": "AVN87",
@@ -583,7 +527,7 @@
       "center_xyz_m": [
         5350.0,
         4720.0,
-        -230.0
+        -520.0
       ],
       "tag_radius_m": 0.25,
       "source_sensor_id": "AVN31",

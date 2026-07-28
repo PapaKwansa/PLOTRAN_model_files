@@ -6,12 +6,12 @@ Geometry convention
 The vertical coordinate is elevation relative to the model top:
 
     top face    z =    0 m
-    bottom face z = -750 m
+    bottom face z = -1550 m
 
-The former 0--750 m depth-positive geometry has therefore been translated with
-``z_new = z_old - 750``.  The HEC centre is at z=-220 m, its top is at
-z=-217.5 m, the shallow strainmeters are at z=-720 m, and AVN31 is at
-z=-230 m.
+The shallow geometry has been extended downward so only the
+underburden is thicker.  The HEC centre is at z=-527.5 m, its top is at z=-525.0 m, and its
+bottom is at z=-530.0 m.  The shallow strainmeters are at z=-30 m, and
+AVN31 is at z=-520 m.
 
 Local-mesh strategy
 -------------------
@@ -57,9 +57,9 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 import numpy as np
 
 # =============================================================================
-# Domain and material geometry: top z=0, bottom z=-750.
+# Domain and material geometry: top z=0, bottom z=-1535.
 # =============================================================================
-DOMAIN_MIN = np.array([0.0, 0.0, -750.0], dtype=float)
+DOMAIN_MIN = np.array([0.0, 0.0, -1535.0], dtype=float)
 DOMAIN_MAX = np.array([10000.0, 10000.0, 0.0], dtype=float)
 DOMAIN_SIZE = DOMAIN_MAX - DOMAIN_MIN
 
@@ -74,19 +74,24 @@ class GeologicalLayer:
 
 
 LAYERS: Tuple[GeologicalLayer, ...] = (
-    GeologicalLayer(1, 4, "underburden", -750.0, -550.0),
-    GeologicalLayer(2, 2, "bartlesville_sand", -550.0, -530.0),
-    GeologicalLayer(3, 3, "basal_layer", -530.0, -500.0),
-    GeologicalLayer(4, 1, "overburden", -500.0, 0.0),
+    # Layer numbering matches the PFLOTRAN material convention used downstream:
+    # 1 = overburden, 2 = Bartlesville sandstone, 3 = basal layer, 4 = underburden.
+
+    GeologicalLayer(1, 1, "overburden", -500.0, 0.0),
+    GeologicalLayer(2, 2, "bartlesville_sand", -530.0, -500.0),
+    GeologicalLayer(3, 3, "basal_layer", -535.0, -530.0),
+    GeologicalLayer(4, 4, "underburden", -1535.0, -535.0),
 )
 
 # =============================================================================
-# HEC: tag-only.
+# HEC: tag-only, embedded in Bartlesville sandstone.
 # =============================================================================
 HEC_NAME = "bartlesville_hec"
 HEC_MATERIAL_ID = 5
-HEC_HOST_MATERIAL_ID = 1
-HEC_CENTER = np.array([5000.0, 5000.0, -220.0], dtype=float)
+HEC_HOST_MATERIAL_ID = 2
+# The HEC occupies the lower 5 m of the Bartlesville layer, with its
+# bottom on the Bartlesville/basal interface at z=-530 m.
+HEC_CENTER = np.array([5000.0, 5000.0, -527.5], dtype=float)
 HEC_LENGTH_M = 580.0
 HEC_WIDTH_M = 300.0
 HEC_THICKNESS_M = 5.0
@@ -117,23 +122,16 @@ class VerticalBand:
 
 
 VERTICAL_BANDS: Tuple[VerticalBand, ...] = (
-    VerticalBand("L1_bottom_coarse", -750.0, -650.0, 1, "largest cells near bottom boundary"),
-    VerticalBand("L1_lower_transition", -650.0, -590.0, 1, "transition toward refined beds"),
-    VerticalBand("L1_mid_transition", -590.0, -565.0, 1, "transition toward refined beds"),
-    VerticalBand("L1_upper_transition", -565.0, -550.0, 1, "matches fine spacing near layer 2"),
-    VerticalBand("L2_lower_refined", -550.0, -540.0, 2, "refined Bartlesville interval"),
-    VerticalBand("L2_upper_refined", -540.0, -530.0, 2, "refined Bartlesville interval"),
-    VerticalBand("L3_lower_refined", -530.0, -515.0, 3, "basal layer refined band"),
-    VerticalBand("L3_upper_refined", -515.0, -500.0, 3, "basal layer refined band"),
-    VerticalBand("L4_lower_refined", -500.0, -400.0, 4, "coarsening upward"),
-    VerticalBand("L4_transition_1", -400.0, -250.0, 4, "coarsening toward HEC"),
-    VerticalBand("L4_hec_lower_matrix", -250.0, -225.0, 4, "matrix level below HEC"),
-    VerticalBand("L4_hec_center_lower", -225.0, -220.0, 4, "HEC centre support"),
-    VerticalBand("L4_hec_center_upper", -220.0, -215.0, 4, "HEC centre support"),
-    VerticalBand("L4_transition_2a", -215.0, -170.0, 4, "coarsening upward"),
-    VerticalBand("L4_transition_2b", -170.0, -135.0, 4, "coarsening upward"),
-    VerticalBand("L4_transition_2c", -135.0, -100.0, 4, "coarsening upward"),
-    VerticalBand("L4_top_transition", -100.0, 0.0, 4, "larger cells near top boundary"),
+    VerticalBand("UB_bottom_coarse", -1535.0, -1300.0, 4, "deepest underburden"),
+    VerticalBand("UB_mid_coarse", -1300.0, -1050.0, 4, "deep underburden"),
+    VerticalBand("UB_upper_transition", -1050.0, -535.0, 4, "approaches basal layer"),
+    VerticalBand("BASAL_lower_refined", -535.0, -530.0, 3, "basal layer"),
+    VerticalBand("BARTLESVILLE_hec_band", -530.0, -525.0, 2, "HEC host interval in Bartlesville sandstone"),
+    VerticalBand("BARTLESVILLE_upper_refined", -525.0, -500.0, 2, "Bartlesville sandstone above the HEC"),
+    VerticalBand("OVERBURDEN_lower_transition", -500.0, -400.0, 1, "lower overburden"),
+    VerticalBand("OVERBURDEN_transition_1", -400.0, -250.0, 1, "middle overburden"),
+    VerticalBand("OVERBURDEN_transition_2", -250.0, -100.0, 1, "upper overburden"),
+    VerticalBand("OVERBURDEN_top_transition", -100.0, 0.0, 1, "largest cells near the top boundary"),
 )
 Z_LEVELS: Tuple[float, ...] = tuple(
     [VERTICAL_BANDS[0].z_min] + [band.z_max for band in VERTICAL_BANDS]
@@ -141,7 +139,8 @@ Z_LEVELS: Tuple[float, ...] = tuple(
 
 # Only true material interfaces and external faces are constrained horizontal
 # PLC planes.  The other z levels remain free refinement-point planes.
-HORIZONTAL_PLC_LEVELS_M = frozenset({-750.0, -550.0, -530.0, -500.0, 0.0})
+HORIZONTAL_PLC_LEVELS_M = frozenset({-1535.0, -535.0, -530.0, -500.0, 0.0})
+
 
 BOUNDARY_MARKERS: Dict[str, int] = {
     "top": 1,
@@ -162,8 +161,8 @@ INJECTION_RADIUS_M = 0.75
 # Keep the internal top cap slightly below z=0 so it does not intersect the
 # external top PLC.  The model top itself remains exactly z=0.
 INJECTION_TOP_CLEARANCE_M = 0.50
-INJECTION_Z_MIN_M = HEC_TOP_Z_M
-INJECTION_Z_MAX_M = -INJECTION_TOP_CLEARANCE_M
+INJECTION_Z_MIN_M = HEC_BOTTOM_Z_M + 0.25
+INJECTION_Z_MAX_M = HEC_TOP_Z_M  - 0.25
 INJECTION_SURFACE_POINTS_PER_RING = 8
 INJECTION_SURFACE_AXIAL_SPACING_M = 0.75
 
@@ -181,9 +180,9 @@ class StrainmeterInput:
 
 
 STRAINMETER_INPUTS: Tuple[StrainmeterInput, ...] = (
-    StrainmeterInput("AVN2", "Shallow coupled strainmeter", 5160.0, 5185.0, -720.0),
-    StrainmeterInput("AVN87", "Shallow coupled strainmeter", 5460.0, 5185.0, -720.0),
-    StrainmeterInput("AVN31", "Deep strainmeter near HEC", 5350.0, 4720.0, -230.0),
+    StrainmeterInput("AVN2", "Shallow coupled strainmeter", 5160.0, 5185.0, -30.0),
+    StrainmeterInput("AVN87", "Shallow coupled strainmeter", 5460.0, 5185.0, -30.0),
+    StrainmeterInput("AVN31", "Deep strainmeter near HEC", 5350.0, 4720.0, -520.0),
 )
 
 # Low feature markers remain separate from boundary markers 1--6.
@@ -263,7 +262,7 @@ DOMAIN_FREE_POINT_CLEARANCE_M = 0.10
 # Delaunay tetrahedralisation only.  This normally keeps the output well below
 # the workflow's 900,000-tetrahedron guard.
 DEFAULT_TETGEN_FLAGS = "-pnAef"
-MAX_RECOMMENDED_INPUT_POINTS = 100_000
+MAX_RECOMMENDED_INPUT_POINTS = 120_000
 MAX_RECOMMENDED_INPUT_FACETS = 100_000
 
 # =============================================================================
@@ -546,12 +545,10 @@ def rotation_matrix_xyz(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np
 # =============================================================================
 # Validation.
 # =============================================================================
-
-
 def validate_configuration() -> None:
     tolerance = 1.0e-9
-    if not np.allclose(DOMAIN_MIN, [0.0, 0.0, -750.0]):
-        raise ValueError("Domain bottom must be z=-750 m.")
+    if not np.allclose(DOMAIN_MIN, [0.0, 0.0, -1535.0]):
+        raise ValueError("Domain bottom must be z=-1535 m.")
     if not np.allclose(DOMAIN_MAX, [10000.0, 10000.0, 0.0]):
         raise ValueError("Domain top must be z=0 m.")
 
@@ -617,7 +614,7 @@ def matrix_point_is_excluded(x_m: float, y_m: float, z_m: float) -> bool:
     remaining grading levels, coarse points inside a target's outer refinement
     envelope would compete with the body-fitted shells, create centerline
     points inside the well, and reconnect the tiny target directly to the
-    20--500 m matrix.  Those points are therefore omitted.
+    20--530 m matrix.  Those points are therefore omitted.
     """
     if float(z_m) in HORIZONTAL_PLC_LEVELS_M:
         return False
@@ -1086,17 +1083,16 @@ def target_region_seed(target: RefinementTarget) -> Region:
         point = center.copy()
     return Region(point=point, attribute=target.material_id, label=target.name)
 
-
 def matrix_regions() -> Tuple[Region, ...]:
-    # Use a location far from all local targets.
+    # Use locations far from all local targets.  The seed order is top-to-bottom
+    # for readability; TetGen only uses the region attribute values.
     x, y = 1000.0, 1000.0
     return (
-        Region(np.array([x, y, -650.0]), 4, "underburden"),
-        Region(np.array([x, y, -540.0]), 2, "bartlesville_sand"),
-        Region(np.array([x, y, -515.0]), 3, "basal_layer"),
         Region(np.array([x, y, -250.0]), 1, "overburden"),
+        Region(np.array([x, y, -515.0]), 2, "bartlesville_sand"),
+        Region(np.array([x, y, -532.5]), 3, "basal_layer"),
+        Region(np.array([x, y, -1035.0]), 4, "underburden"),
     )
-
 
 def write_poly(
     path: Path,
@@ -1105,7 +1101,7 @@ def write_poly(
     regions: Sequence[Region],
 ) -> None:
     with path.open("w", encoding="utf-8") as handle:
-        handle.write("# Bartlesville PLC: z=0 top, z=-750 bottom; graded tube/geodesic refinement\n\n")
+        handle.write("# Bartlesville PLC: z=0 top, z=-1535 bottom; corrected stratigraphy with the HEC inside Bartlesville sandstone\n\n")
         handle.write("# Part 1 - node list\n")
         handle.write(f"{len(registry.points)} 3 0 0\n")
         for point_id, xyz in enumerate(registry.points, start=1):
@@ -1210,8 +1206,8 @@ def write_sidecars(
         "coordinate_convention": {
             "description": "elevation relative to model top",
             "top_z_m": 0.0,
-            "bottom_z_m": -750.0,
-            "conversion_from_previous_geometry": "z_new = z_old - 750",
+            "bottom_z_m": float(DOMAIN_MIN[2]),
+            "conversion_from_previous_geometry": "Bartlesville sand now sits above the basal layer; the HEC is placed inside Bartlesville directly above the basal interface; model bottom restored to z=-1535 m; strainmeter depths converted to negative-z convention",
         },
         "domain": {
             "min": DOMAIN_MIN.tolist(),
@@ -1522,7 +1518,7 @@ def run_tetgen(tetgen_exe: str, poly_path: Path, diagnose: bool) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build Bartlesville PLC with z=0 top, z=-750 bottom, and graded tetrahedral local refinement."
+        description="Build Bartlesville PLC with z=0 top, z=-1535 bottom, and graded tetrahedral local refinement."
     )
     parser.add_argument("mesh_prefix", help="Output mesh prefix, e.g. bartlesville_hec")
     parser.add_argument("tetgen_exe", nargs="?", help="TetGen executable unless --write-only is used")

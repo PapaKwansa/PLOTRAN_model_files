@@ -1,13 +1,13 @@
 field,value
 representation,tag_only
-center_m,"[5000.0, 5000.0, -220.0]"
+center_m,"[5000.0, 5000.0, -527.5]"
 length_m,580.0
 width_m,300.0
 thickness_m,5.0
 azimuth_deg_east_of_north,5.0
-tagged_node_count,426
-tagged_z_unique_m,-220.0000000000
-minimum_local_length_m,-280.0000000000
-maximum_local_length_m,280.0000000000
-minimum_local_width_m,-140.0000000000
-maximum_local_width_m,140.0000000000
+tagged_node_count,50
+tagged_z_unique_m,-527.5000000000
+minimum_local_length_m,-9.4584422343
+maximum_local_length_m,9.4584422343
+minimum_local_width_m,-9.4584422343
+maximum_local_width_m,9.4584422343
