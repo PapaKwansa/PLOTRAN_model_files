@@ -8,20 +8,20 @@
 
   <Time TimeType="Single" Value="0.0"/>
   <Grid Name = "0.0">
-    <Topology TopologyType="Tetrahedron" NumberOfElements="279392">
-      <DataItem Dimensions="279392 4" Format="HDF">
+    <Topology TopologyType="Tetrahedron" NumberOfElements="530133">
+      <DataItem Dimensions="530133 4" Format="HDF">
       meshtags.h5:/Mesh/Elements
       </DataItem>
     </Topology>
 
   <Geometry GeometryType="XYZ">
-    <DataItem Dimensions= "52475 3" Format="HDF">
+    <DataItem Dimensions= "98672 3" Format="HDF">
     meshtags.h5:/Mesh/Nodes
     </DataItem>
   </Geometry>
 
     <Attribute Name="tags" Center="Node">
-      <DataItem Dimensions="52475" Format="HDF">
+      <DataItem Dimensions="98672" Format="HDF">
       meshtags.h5:/Mesh/Time 0.0 Real
       </DataItem>
     </Attribute>

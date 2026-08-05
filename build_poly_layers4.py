@@ -29,15 +29,17 @@ This revision uses a body-fitted, smoothly graded point layout:
 * surrounding strainmeter refinement uses rotated geodesic shells with a
   nearly constant radial-to-tangential size ratio;
 * no centerline point chain and no radial center spokes are inserted;
-* TetGen quality refinement is deliberately disabled by default.  On this
-  multi-scale 10-km model, ``-q1.5`` inserts hundreds of thousands of Steiner
-  points on the geological interfaces and can create several million
-  tetrahedra.  The default constrained-Delaunay run preserves the graded input
-  layout without that global refinement explosion.
+* TetGen quality refinement is disabled by default in this safer version,
+  because the thin 5 m layers and the tiny well/sensor PLCs can make
+  global `-q` refinement fail before the mesh is usable.
+  The script instead adds denser local points near the HEC and injection
+  well, and keeps the quality switch opt-in for later tests.
 
 The HEC remains tag-only and is described in the JSON sidecar.  Geological
 material interfaces are explicit horizontal PLC facets.  Other vertical
 refinement levels are Part-1 points only.
+
+
 """
 
 from __future__ import annotations
@@ -103,7 +105,7 @@ HEC_TOP_Z_M = HEC_CENTER[2] + 0.5 * HEC_THICKNESS_M
 # Matrix point lattice.
 # =============================================================================
 MATRIX_COARSE_STEP_M = 250.0
-ROTATED_TAG_LATTICE_STEP_M = 20.0
+ROTATED_TAG_LATTICE_STEP_M = 10.0
 X_FINE_START, X_FINE_END = 4800.0, 5200.0
 Y_FINE_START, Y_FINE_END = 4680.0, 5320.0
 ROTATION_INNER_HALF_X = 220.0
@@ -164,7 +166,7 @@ INJECTION_TOP_CLEARANCE_M = 0.50
 INJECTION_Z_MIN_M = HEC_BOTTOM_Z_M + 0.25
 INJECTION_Z_MAX_M = HEC_TOP_Z_M  - 0.25
 INJECTION_SURFACE_POINTS_PER_RING = 8
-INJECTION_SURFACE_AXIAL_SPACING_M = 0.75
+INJECTION_SURFACE_AXIAL_SPACING_M = 0.50
 
 STRAINMETER_RADIUS_M = 0.25
 STRAINMETER_SURFACE_SUBDIVISIONS = 1
@@ -211,33 +213,44 @@ class TubeShell:
 # This is an O-grid-like point layout around the complete injection well.
 INJECTION_TUBE_SHELLS: Tuple[TubeShell, ...] = (
     # radius, maximum axial spacing, points/ring, end padding
-    # The innermost rings have edge lengths comparable to the 0.1-m well
-    # diameter.  Spacing then grows by about 1.6--1.9 per shell until it
-    # approaches the 20-m central matrix lattice.
-    TubeShell(1.00, 0.80, 8, 1.00),
-    TubeShell(1.60, 1.00, 8, 1.50),
-    TubeShell(2.50, 1.40, 10, 2.00),
-    TubeShell(4.00, 2.00, 10, 2.80),
-    TubeShell(6.20, 3.20, 12, 4.00),
-    TubeShell(9.50, 4.80, 12, 5.50),
-    TubeShell(14.0, 7.20, 12, 8.00),
-    TubeShell(20.0, 10.5, 12, 11.0),
-    TubeShell(28.0, 15.0, 12, 15.0),
+    # The innermost rings are denser so the 0.75 m well expands more smoothly
+    # into the Bartlesville/HEC neighborhood before it reaches the coarser matrix.
+    TubeShell(0.90, 0.60, 8, 0.80),
+    TubeShell(1.15, 0.75, 8, 1.00),
+    TubeShell(1.45, 0.90, 8, 1.20),
+    TubeShell(1.85, 1.10, 8, 1.50),
+    TubeShell(2.35, 1.35, 10, 1.80),
+    TubeShell(3.00, 1.70, 10, 2.20),
+    TubeShell(3.80, 2.20, 10, 2.70),
+    TubeShell(4.80, 2.80, 12, 3.30),
+    TubeShell(6.00, 3.50, 12, 4.00),
+    TubeShell(7.60, 4.40, 12, 5.00),
+    TubeShell(9.50, 5.40, 12, 6.00),
+    TubeShell(12.0, 6.80, 12, 7.50),
+    TubeShell(15.0, 8.50, 12, 9.00),
+    TubeShell(19.0, 10.5, 12, 11.0),
+    TubeShell(24.0, 13.0, 12, 13.5),
+    TubeShell(30.0, 16.0, 12, 16.0),
 )
 
 # Rotated geodesic shells around point-like strainmeters.  The geometric
 # progression keeps radial spacing comparable to surface edge length.
 STRAINMETER_SHELL_RADII_M: Tuple[float, ...] = (
-    0.35,
-    0.60,
-    1.00,
-    1.70,
-    2.80,
-    4.50,
-    7.00,
-    10.5,
-    15.5,
-    22.0,
+    0.30,
+    0.45,
+    0.65,
+    0.90,
+    1.25,
+    1.75,
+    2.40,
+    3.25,
+    4.35,
+    5.80,
+    7.70,
+    10.0,
+    13.0,
+    16.5,
+    21.0,
 )
 STRAINMETER_REFINEMENT_SUBDIVISIONS = 1
 
@@ -252,6 +265,11 @@ STRAINMETER_ROTATIONS_DEG: Dict[str, Tuple[float, float, float]] = {
 POINT_HASH_BIN_SIZE_M = 0.75
 MIN_POINT_SEPARATION_FACTOR = 0.25
 DOMAIN_FREE_POINT_CLEARANCE_M = 0.10
+
+# Keep TetGen quality refinement opt-in.  Dense local points are safer than
+# forcing global -q on the first pass through this geometry.
+ENABLE_TETGEN_QUALITY = False
+QUALITY_SWITCH = "1.5"
 
 # IMPORTANT: do not enable TetGen -q by default for this geometry.  The
 # quality-refinement pass acts on the entire 10-km domain and all geological
@@ -281,6 +299,7 @@ class Region:
     point: np.ndarray
     attribute: int
     label: str
+    max_volume_m3: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -1081,17 +1100,32 @@ def target_region_seed(target: RefinementTarget) -> Region:
         point = center + np.array([0.15 * target.radius_m, 0.0, 0.0], dtype=float)
     else:
         point = center.copy()
-    return Region(point=point, attribute=target.material_id, label=target.name)
+    return Region(point=point, attribute=target.material_id, label=target.name, max_volume_m3=None)
+
+LAYER_MAX_VOLUMES_M3: Dict[int, float] = {
+    # These are conservative placeholders so the .poly file can carry TetGen
+    # region-volume information when you later decide to use -a on purpose.
+    # They are intentionally very large here and do not force refinement by
+    # themselves unless -a is enabled.
+    1: 1.0e12,
+    2: 1.0e12,
+    3: 1.0e12,
+    4: 1.0e12,
+}
+TARGET_MAX_VOLUMES_M3: Dict[str, float] = {
+    # Keep the tag-only HEC / well / strainmeter regions unconstrained for now.
+    # They are geometric targets, not volumetric materials.
+}
 
 def matrix_regions() -> Tuple[Region, ...]:
     # Use locations far from all local targets.  The seed order is top-to-bottom
     # for readability; TetGen only uses the region attribute values.
     x, y = 1000.0, 1000.0
     return (
-        Region(np.array([x, y, -250.0]), 1, "overburden"),
-        Region(np.array([x, y, -515.0]), 2, "bartlesville_sand"),
-        Region(np.array([x, y, -532.5]), 3, "basal_layer"),
-        Region(np.array([x, y, -1035.0]), 4, "underburden"),
+        Region(np.array([x, y, -250.0]), 1, "overburden", LAYER_MAX_VOLUMES_M3[1]),
+        Region(np.array([x, y, -515.0]), 2, "bartlesville_sand", LAYER_MAX_VOLUMES_M3[2]),
+        Region(np.array([x, y, -532.5]), 3, "basal_layer", LAYER_MAX_VOLUMES_M3[3]),
+        Region(np.array([x, y, -1035.0]), 4, "underburden", LAYER_MAX_VOLUMES_M3[4]),
     )
 
 def write_poly(
@@ -1118,10 +1152,10 @@ def write_poly(
         handle.write(f"{len(regions)}\n")
         for index, region in enumerate(regions, start=1):
             x_value, y_value, z_value = region.point
-            handle.write(
-                f"{index} {x_value:.10f} {y_value:.10f} {z_value:.10f} "
-                f"{region.attribute}\n"
-            )
+            line = f"{index} {x_value:.10f} {y_value:.10f} {z_value:.10f} {region.attribute}"
+            if region.max_volume_m3 is not None:
+                line += f" {region.max_volume_m3:.10f}"
+            handle.write(line + "\n")
 
 
 def validate_geometry_sidecar_schema(geometry: Dict[str, object]) -> None:
@@ -1487,14 +1521,9 @@ def run_tetgen(tetgen_exe: str, poly_path: Path, diagnose: bool) -> None:
         raise ValueError("BARTLESVILLE_TETGEN_FLAGS cannot be empty.")
     if tetgen_switch_present(flags, "q") and os.environ.get("BARTLESVILLE_ALLOW_Q", "0") != "1":
         raise ValueError(
-            "TetGen -q is disabled for this large multi-scale PLC because it previously "
-            "generated 4.74 million tetrahedra. Remove -q from "
-            "BARTLESVILLE_TETGEN_FLAGS. Set BARTLESVILLE_ALLOW_Q=1 only for a deliberate test."
-        )
-    if tetgen_switch_present(flags, "a"):
-        raise ValueError(
-            "Do not use TetGen -a with this point-controlled profile; global/region volume "
-            "refinement can exceed the workflow mesh-size guard."
+            "TetGen -q is opt-in for this geometry because the thin layers and tiny "
+            "target PLCs can trigger refinement failure. Set BARTLESVILLE_ALLOW_Q=1 "
+            "only after the locally refined geometry is stable."
         )
     if diagnose and not tetgen_switch_present(flags, "d"):
         flags += "d"
@@ -1505,7 +1534,7 @@ def run_tetgen(tetgen_exe: str, poly_path: Path, diagnose: bool) -> None:
     print(f"    injection radius        : {INJECTION_RADIUS_M:g} m")
     print(f"    strainmeter radius      : {STRAINMETER_RADIUS_M:g} m")
     print("    local layout            : lean staggered tube shells + rotated geodesic shells")
-    print("    quality refinement      : disabled by default to prevent global Steiner-point growth")
+    print("    quality refinement      : disabled by default; use BARTLESVILLE_ALLOW_Q=1 for testing")
     print("    TetGen flags            :", flags)
     print("CMD:", " ".join(shlex.quote(token) for token in command))
     subprocess.run(command, check=True)
