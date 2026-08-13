@@ -6,7 +6,7 @@ Geometry convention
 The vertical coordinate is elevation relative to the model top:
 
     top face    z =    0 m
-    bottom face z = -1550 m
+    bottom face z = -1535 m
 
 The shallow geometry has been extended downward so only the
 underburden is thicker.  The HEC centre is at z=-527.5 m, its top is at z=-525.0 m, and its
@@ -104,14 +104,15 @@ HEC_TOP_Z_M = HEC_CENTER[2] + 0.5 * HEC_THICKNESS_M
 # =============================================================================
 # Matrix point lattice.
 # =============================================================================
-MATRIX_COARSE_STEP_M = 250.0
-ROTATED_TAG_LATTICE_STEP_M = 10.0
+MATRIX_COARSE_STEP_M = 125.0
+ROTATED_TAG_LATTICE_STEP_M = 20.0
+# TEST 2: add a few intermediate X/Y points immediately outside the fine lattice.
 X_FINE_START, X_FINE_END = 4800.0, 5200.0
 Y_FINE_START, Y_FINE_END = 4680.0, 5320.0
-ROTATION_INNER_HALF_X = 220.0
-ROTATION_INNER_HALF_Y = 360.0
-ROTATION_OUTER_HALF_X = 800.0
-ROTATION_OUTER_HALF_Y = 1000.0
+ROTATION_INNER_HALF_X = 300.0
+ROTATION_INNER_HALF_Y = 450.0
+ROTATION_OUTER_HALF_X = 1400.0
+ROTATION_OUTER_HALF_Y = 1600.0
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,29 @@ Z_LEVELS: Tuple[float, ...] = tuple(
 # Only true material interfaces and external faces are constrained horizontal
 # PLC planes.  The other z levels remain free refinement-point planes.
 HORIZONTAL_PLC_LEVELS_M = frozenset({-1535.0, -535.0, -530.0, -500.0, 0.0})
+
+# =============================================================================
+# TEST 5: local vertical refinement around the HEC.
+# The global Z levels stay at the proven Test 2 configuration.  These are
+# free Part-1 points only, confined to a local HEC-centered halo, so we add
+# vertical grading without replicating a new X/Y lattice over the full 10 km
+# domain.  No geological interface or target tag is changed.
+# =============================================================================
+HEC_LOCAL_X_HALF_M = 450.0
+HEC_LOCAL_Y_HALF_M = 450.0
+HEC_LOCAL_XY_SPACING_M = 40.0
+HEC_LOCAL_VERTICAL_LEVELS_M: Tuple[float, ...] = (
+    -625.0,
+    -600.0,
+    -575.0,
+    -550.0,
+    -540.0,
+    -532.5,
+    -527.5,
+    -522.5,
+    -515.0,
+)
+HEC_LOCAL_STAGGER_M = 20.0
 
 
 BOUNDARY_MARKERS: Dict[str, int] = {
@@ -281,7 +305,7 @@ QUALITY_SWITCH = "1.5"
 # the workflow's 900,000-tetrahedron guard.
 DEFAULT_TETGEN_FLAGS = "-pnAef"
 MAX_RECOMMENDED_INPUT_POINTS = 120_000
-MAX_RECOMMENDED_INPUT_FACETS = 100_000
+MAX_RECOMMENDED_INPUT_FACETS = 120_000
 
 # =============================================================================
 # Data structures.
@@ -474,11 +498,12 @@ def unique_sorted(values: Iterable[float]) -> np.ndarray:
 
 
 def make_x_axis() -> np.ndarray:
+    """Build X coordinates with a small, targeted transition smoothing band."""
     values: List[float] = []
     values += inclusive_values(0.0, 4000.0, MATRIX_COARSE_STEP_M)
-    values += [4200.0, 4400.0, 4600.0, 4700.0]
+    values += [4200.0, 4400.0, 4600.0, 4650.0, 4700.0, 4750.0]
     values += inclusive_values(X_FINE_START, X_FINE_END, ROTATED_TAG_LATTICE_STEP_M)
-    values += [5300.0, 5400.0, 5600.0, 5800.0, 6000.0]
+    values += [5250.0, 5300.0, 5350.0, 5400.0, 5600.0, 5800.0, 6000.0]
     values += inclusive_values(6500.0, 10000.0, MATRIX_COARSE_STEP_M)
     axis = unique_sorted(values)
     if axis[0] != 0.0 or axis[-1] != 10000.0 or not np.all(np.diff(axis) > 0.0):
@@ -487,18 +512,17 @@ def make_x_axis() -> np.ndarray:
 
 
 def make_y_axis() -> np.ndarray:
+    """Build Y coordinates with a small, targeted transition smoothing band."""
     values: List[float] = []
     values += inclusive_values(0.0, 4000.0, MATRIX_COARSE_STEP_M)
-    values += [4200.0, 4400.0, 4500.0, 4660.0]
+    values += [4200.0, 4400.0, 4500.0, 4580.0, 4660.0]
     values += inclusive_values(Y_FINE_START, Y_FINE_END, ROTATED_TAG_LATTICE_STEP_M)
-    values += [5340.0, 5500.0, 5600.0, 5800.0, 6000.0]
+    values += [5340.0, 5420.0, 5500.0, 5600.0, 5800.0, 6000.0]
     values += inclusive_values(6500.0, 10000.0, MATRIX_COARSE_STEP_M)
     axis = unique_sorted(values)
     if axis[0] != 0.0 or axis[-1] != 10000.0 or not np.all(np.diff(axis) > 0.0):
         raise ValueError("Invalid y axis.")
     return axis
-
-
 def rotation_weight(value: float, inner_half: float, outer_half: float) -> float:
     distance = abs(value)
     if distance <= inner_half:
@@ -656,6 +680,64 @@ def matrix_point_is_excluded(x_m: float, y_m: float, z_m: float) -> bool:
         if float(np.linalg.norm(point - np.asarray(target.center_xyz, dtype=float))) < 1.08 * outer_sensor_radius:
             return True
     return False
+
+
+def add_local_hec_vertical_refinement(
+    registry: PointRegistry,
+    spacing_filter: PointSpacingFilter,
+) -> int:
+    """Add local, free 3-D grading points around the HEC.
+
+    The point cloud is aligned with the HEC strike/width axes, uses a staggered
+    XY lattice between successive z levels, and is excluded wherever the normal
+    matrix exclusion already protects a target.  These points are not facets and
+    do not create new material interfaces.
+    """
+    length_axis, width_axis, _ = hec_axes()
+    half = float(HEC_LOCAL_XY_SPACING_M / 2.0)
+    u_values = np.arange(
+        -HEC_LOCAL_X_HALF_M, HEC_LOCAL_X_HALF_M + 0.5 * HEC_LOCAL_XY_SPACING_M,
+        HEC_LOCAL_XY_SPACING_M,
+        dtype=float,
+    )
+    v_values = np.arange(
+        -HEC_LOCAL_Y_HALF_M, HEC_LOCAL_Y_HALF_M + 0.5 * HEC_LOCAL_XY_SPACING_M,
+        HEC_LOCAL_XY_SPACING_M,
+        dtype=float,
+    )
+
+    before = len(registry.points)
+    accepted = 0
+
+    for level_index, z_value in enumerate(HEC_LOCAL_VERTICAL_LEVELS_M):
+        u_shift = HEC_LOCAL_STAGGER_M if level_index % 2 else 0.0
+        v_shift = HEC_LOCAL_STAGGER_M if (level_index // 2) % 2 else 0.0
+
+        for i, u_base in enumerate(u_values):
+            u = float(u_base + u_shift)
+            if u < -HEC_LOCAL_X_HALF_M or u > HEC_LOCAL_X_HALF_M:
+                continue
+            for j, v_base in enumerate(v_values):
+                v = float(v_base + v_shift)
+                if v < -HEC_LOCAL_Y_HALF_M or v > HEC_LOCAL_Y_HALF_M:
+                    continue
+
+                xy = (
+                    HEC_CENTER[:2]
+                    + u * length_axis[:2]
+                    + v * width_axis[:2]
+                )
+                point = np.array([xy[0], xy[1], float(z_value)], dtype=float)
+
+                if not inside_domain_for_free_point(point, HEC_LOCAL_XY_SPACING_M):
+                    continue
+                if matrix_point_is_excluded(point[0], point[1], point[2]):
+                    continue
+
+                if spacing_filter.try_add(point, 0.25 * HEC_LOCAL_XY_SPACING_M):
+                    accepted += 1
+
+    return accepted
 
 
 def build_matrix_surface_plc(
@@ -1359,6 +1441,18 @@ def write_sidecars(
                 f"{u_value:.10f}", f"{v_value:.10f}",
             ])
 
+    with Path(f"{mesh_prefix}_hec_local_vertical_refinement.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["z_m", "xy_spacing_m", "x_half_extent_m", "y_half_extent_m", "stagger_m"])
+        for z_value in HEC_LOCAL_VERTICAL_LEVELS_M:
+            writer.writerow([
+                f"{z_value:.6f}",
+                f"{HEC_LOCAL_XY_SPACING_M:.6f}",
+                f"{HEC_LOCAL_X_HALF_M:.6f}",
+                f"{HEC_LOCAL_Y_HALF_M:.6f}",
+                f"{HEC_LOCAL_STAGGER_M:.6f}",
+            ])
+
     with Path(f"{mesh_prefix}_vertical_grading.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
@@ -1387,6 +1481,8 @@ def build_geometry(mesh_prefix: str) -> Tuple[Path, Dict[str, int]]:
 
     x_values, y_values = build_matrix_surface_plc(registry, facets)
     target_stats = add_target_plcs_and_refinement(registry, facets)
+    local_spacing_filter = PointSpacingFilter(registry)
+    local_hec_points = add_local_hec_vertical_refinement(registry, local_spacing_filter)
     topology = validate_target_surface_topology(facets)
 
     if len(registry.points) > MAX_RECOMMENDED_INPUT_POINTS:
@@ -1411,6 +1507,7 @@ def build_geometry(mesh_prefix: str) -> Tuple[Path, Dict[str, int]]:
         "holes": 0,
         "regions": len(regions),
         "local_refinement_points": sum(stats["refinement_points"] for stats in target_stats.values()),
+        "hec_local_vertical_refinement_points": local_hec_points,
     }
     for name, stats in target_stats.items():
         counts[f"{name}_surface_points"] = stats["surface_points"]
@@ -1534,7 +1631,7 @@ def run_tetgen(tetgen_exe: str, poly_path: Path, diagnose: bool) -> None:
     print(f"    injection radius        : {INJECTION_RADIUS_M:g} m")
     print(f"    strainmeter radius      : {STRAINMETER_RADIUS_M:g} m")
     print("    local layout            : lean staggered tube shells + rotated geodesic shells")
-    print("    quality refinement      : disabled by default; use BARTLESVILLE_ALLOW_Q=1 for testing")
+    print("    quality refinement      : disabled; TEST 5 local vertical grading")
     print("    TetGen flags            :", flags)
     print("CMD:", " ".join(shlex.quote(token) for token in command))
     subprocess.run(command, check=True)
@@ -1570,6 +1667,7 @@ def main() -> None:
     print(f"    tube refinement profile : {prefix}_tube_refinement_profile.csv")
     print(f"    strainmeter locations   : {prefix}_strainmeters.csv")
     print(f"    vertical grading        : {prefix}_vertical_grading.csv")
+    print(f"    HEC local vertical     : {prefix}_hec_local_vertical_refinement.csv")
     for name, value in counts.items():
         print(f"    {name:27s}: {value}")
     print(f"    rough no-q tet estimate : {5 * counts['points']:,}--{8 * counts['points']:,}")

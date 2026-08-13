@@ -5,9 +5,9 @@ length_m,580.0
 width_m,300.0
 thickness_m,5.0
 azimuth_deg_east_of_north,5.0
-tagged_node_count,76
+tagged_node_count,171
 tagged_z_unique_m,-527.5000000000
-minimum_local_length_m,-9.4116006233
-maximum_local_length_m,9.4116006233
-minimum_local_width_m,-9.4116006233
-maximum_local_width_m,9.4116006233
+minimum_local_length_m,-250.0000000000
+maximum_local_length_m,270.0000000000
+minimum_local_width_m,-110.0000000000
+maximum_local_width_m,130.0000000000
