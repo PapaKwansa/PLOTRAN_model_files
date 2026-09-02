@@ -47,7 +47,7 @@ RESULT_BASE="${RESULT_BASE:-/home/harhin/pflotran_results/north_avant_v5}"
 
 # Production-tested PETSc stack.
 export PETSC_DIR="${PETSC_DIR:-/home/harhin/PFLOTRAN/petsc}"
-export PETSC_ARCH="${PETSC_ARCH:-arch-openmpi-hdf5}"
+export PETSC_ARCH="${PETSC_ARCH:-arch-linux-c-opt}"
 
 # Module names may be overridden at submission if Palmetto changes spelling.
 GCC_MODULE="${GCC_MODULE:-gcc}"
