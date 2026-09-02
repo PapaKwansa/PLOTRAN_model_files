@@ -1,13 +1,22 @@
 # ============================================================
-# NORTH AVANT V5: 4-HOUR TWO-WAY PREPRODUCTION / SCALING DECK
+# NORTH AVANT V5: 4-HOUR STABILIZED TWO-WAY PREPRODUCTION DECK
 #
-# Physical timeline exercised by this gate
-# ----------------------------------------
-#   0.0 to 0.5 h : no injection
-#   0.5 to 3.0 h : 1.0e-3 m^3/s
-#   3.0 to 4.0 h : 1.9e-3 m^3/s
+# Purpose
+# -------
+# This gate exercises the final V5 mesh, two-way poromechanical coupling,
+# the first two pump transitions, staggered restart checkpoints, aligned
+# flow/geomechanics output, and the Palmetto production runtime.
 #
-# This deliberately passes both rate discontinuities at 0.5 and 3 h.
+# Volume-preserving injection history
+# -----------------------------------
+#   0.00 to 0.45 h : no injection
+#   0.45 to 0.55 h : smooth ramp from 0 to 1.0e-3 m^3/s
+#   0.55 to 2.90 h : hold 1.0e-3 m^3/s
+#   2.90 to 3.10 h : smooth ramp from 1.0e-3 to 1.9e-3 m^3/s
+#   3.10 to 4.00 h : hold 1.9e-3 m^3/s
+#
+# The symmetric piecewise-linear ramps preserve the 15.84 m^3 injected by
+# the original STEP schedule through 4 h while removing instantaneous jumps.
 #
 # Validated numerical infrastructure
 # ----------------------------------
@@ -17,22 +26,16 @@
 # Flow materials  : bartlesville_hec_lime_v5_interfaces_material_ids.h5
 # Flow boundaries : boundary_ex_v5/*.ex
 #
-# This deck preserves the material properties and mechanical boundary
-# conditions used in the successful V5 smoke, two-way, and restart tests.
-#
-# INJECTION-HISTORY INTERPRETATION
-# --------------------------------
-# The original 96-hour deck omitted INTERPOLATION, for which PFLOTRAN uses
-# STEP interpolation by default. This deck writes INTERPOLATION STEP
-# explicitly so the old physical schedule is preserved:
-#
-#   0.0 to 0.5 h   : 0.0 m^3/s
-#   0.5 to 3.0 h   : 1.0e-3 m^3/s
-#   3.0 to 19.0 h  : 1.9e-3 m^3/s
-#   The 4-hour test ends after one hour at the 1.9e-3 m^3/s stage.
-#
-# Change STEP to LINEAR only if the four tabulated values are known to be
-# continuous rate-history waypoints rather than operating stages.
+# Numerical stabilization
+# -----------------------
+# * TWO_WAY_COUPLED physics is retained.
+# * Pump changes use INTERPOLATION LINEAR and synchronized ramp waypoints.
+# * Maximum timesteps are tightened before and during each ramp.
+# * Pressure/saturation governors limit accepted state changes.
+# * Timestep cuts are stronger and timestep regrowth is capped.
+# * Newton uses the PETSc trust-region method (SNES_TYPE NTR).
+# * The flow/geomechanics exchange interval is reduced to 0.005 h.
+# * Checkpoints are staggered away from rate, snapshot, and final-time events.
 # ============================================================
 
 SIMULATION
@@ -54,7 +57,8 @@ SIMULATION
   /
 
   CHECKPOINT
-    TIMES hour 5.d-1 3.d0 4.d0
+    # Stagger restart writes away from pump, HDF5-output, and final-time events.
+    TIMES hour 3.d-1 2.5d0 3.7d0
     FORMAT HDF5
     TIME_UNITS hour
   /
@@ -72,21 +76,41 @@ END
 NUMERICAL_METHODS FLOW
   TIMESTEPPER
     INITIAL_TIMESTEP_SIZE 1.d-6 day
-    # Conservative early-time resolution, controlled growth, and a
-    # deliberately refined window around the 19 h shut-in transition.
-    MAXIMUM_TIMESTEP_SIZE 5.d-3 hour at 0.d0  hour
-    MAXIMUM_TIMESTEP_SIZE 2.d-2 hour at 1.d-1 hour
-    MAXIMUM_TIMESTEP_SIZE 5.d-2 hour at 5.d-1 hour
-    MAXIMUM_TIMESTEP_SIZE 1.d-1 hour at 3.d0  hour
-    PRESSURE_CHANGE_GOVERNOR 1.d5
-    SATURATION_CHANGE_GOVERNOR 1.d-1
-    TIMESTEP_REDUCTION_FACTOR 5.d-1
+
+    # Quiescent startup.
+    MAXIMUM_TIMESTEP_SIZE 5.d-3 hour at 0.d0 hour
+
+    # Resolve the 0.45-0.55 h startup ramp.
+    MAXIMUM_TIMESTEP_SIZE 5.d-4 hour at 4.d-1 hour
+
+    # Controlled recovery after startup.
+    MAXIMUM_TIMESTEP_SIZE 2.d-3 hour at 6.d-1 hour
+    MAXIMUM_TIMESTEP_SIZE 5.d-3 hour at 1.d0 hour
+
+    # Resolve the 2.90-3.10 h full-rate ramp.
+    MAXIMUM_TIMESTEP_SIZE 5.d-4 hour at 2.8d0 hour
+
+    # Controlled recovery after the second ramp.
+    MAXIMUM_TIMESTEP_SIZE 2.d-3 hour at 3.2d0 hour
+    MAXIMUM_TIMESTEP_SIZE 1.d-2 hour at 3.5d0 hour
+
+    PRESSURE_CHANGE_GOVERNOR 5.d4
+    SATURATION_CHANGE_GOVERNOR 2.d-2
+
+    TIMESTEP_REDUCTION_FACTOR 2.5d-1
+    TIMESTEP_MAXIMUM_GROWTH_FACTOR 1.2d0
+    NUM_STEPS_AFTER_TS_CUT 10
+
     MAXIMUM_CONSECUTIVE_TS_CUTS 20
     MAXIMUM_NUMBER_OF_TIMESTEPS 500000
   /
+
   NEWTON_SOLVER
+    SNES_TYPE NTR
+    DTOL 1.d3
     MAXIMUM_NUMBER_OF_ITERATIONS 50
   /
+
   LINEAR_SOLVER
     SOLVER BCGS
     PRECONDITIONER ASM
@@ -94,7 +118,6 @@ NUMERICAL_METHODS FLOW
     RTOL 1.d-8
   /
 END
-
 TIME
   FINAL_TIME 4.d0 hour
 END
@@ -232,7 +255,7 @@ OUTPUT
   SCREEN PERIODIC 20
   TIME_UNITS hour
   SNAPSHOT_FILE
-    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 5.d-1 1.d0 2.d0 3.d0 3.1d0 3.5d0 4.d0
+    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 4.5d-1 5.d-1 5.5d-1 1.d0 2.d0 2.9d0 3.d0 3.1d0 3.5d0 4.d0
     FORMAT HDF5
     VARIABLES
       LIQUID_PRESSURE
@@ -311,9 +334,8 @@ FLOW_CONDITION noflow
   LIQUID_FLUX 0.d0
 END
 
-# Field injection/recovery schedule.
-# STEP is explicit and preserves the behavior of the old 96-hour input deck.
-# SYNC_TIMESTEP_WITH_UPDATE forces a timestep boundary at 0.5, 3, and 19 h.
+# Volume-preserving, smooth injection schedule.
+# SYNC_TIMESTEP_WITH_UPDATE forces a timestep boundary at every ramp waypoint.
 FLOW_CONDITION injection
   TYPE
     RATE SCALED_VOLUMETRIC_RATE VOLUME
@@ -322,11 +344,28 @@ FLOW_CONDITION injection
   RATE LIST
     TIME_UNITS hour
     DATA_UNITS m^3/s
-    INTERPOLATION STEP
-    0.d0     0.d0
-    0.5d0   1.d-3
-    3.d0    1.9d-3
-    19.d0   0.d0
+    INTERPOLATION LINEAR
+
+    0.d0       0.d0
+
+    # Smooth startup ramp centered on the original 0.5 h switch.
+    0.45d0     0.d0
+    0.475d0    1.464466094d-4
+    0.50d0     5.000000000d-4
+    0.525d0    8.535533906d-4
+    0.55d0     1.000000000d-3
+
+    # Hold the first operating rate.
+    2.90d0     1.000000000d-3
+
+    # Smooth full-rate ramp centered on the original 3 h switch.
+    2.95d0     1.131801948d-3
+    3.00d0     1.450000000d-3
+    3.05d0     1.768198052d-3
+    3.10d0     1.900000000d-3
+
+    # Hold full-rate injection through the 4 h gate.
+    4.d0       1.900000000d-3
   /
 END
 
@@ -385,9 +424,9 @@ GEOMECHANICS
     GRAVITY 0.d0 0.d0 0.d0
   END
 
-  # Retain the coupling interval used in the validated V5 coupled tests.
+  # Reduced exchange interval for the stabilized two-way solution.
   GEOMECHANICS_TIME
-    COUPLING_TIMESTEP_SIZE 1.d-2 hour
+    COUPLING_TIMESTEP_SIZE 5.d-3 hour
   END
 
   # ---------------------------------------------------------------------------
@@ -635,7 +674,7 @@ GEOMECHANICS
   # vertically, and the top surface remains traction-free.
   # Explicit times keep flow and geomechanics visualization products aligned.
   GEOMECHANICS_OUTPUT
-    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 5.d-1 1.d0 2.d0 3.d0 3.1d0 3.5d0 4.d0
+    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 4.5d-1 5.d-1 5.5d-1 1.d0 2.d0 2.9d0 3.d0 3.1d0 3.5d0 4.d0
     FORMAT HDF5
   END
 

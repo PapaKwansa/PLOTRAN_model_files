@@ -1,10 +1,19 @@
 # ============================================================
-# NORTH AVANT V5: 96-HOUR TWO-WAY-COUPLED PRODUCTION DECK
+# NORTH AVANT V5: 96-HOUR STABILIZED TWO-WAY PRODUCTION DECK
 #
 # Physical timeline
 # -----------------
-#   0 to 19 h  : injection history from the RATE LIST below
-#   19 to 96 h : shut-in / recovery; the final listed rate is zero
+#   0.00 to 0.45 h  : no injection
+#   0.45 to 0.55 h  : smooth ramp from 0 to 1.0e-3 m^3/s
+#   0.55 to 2.90 h  : hold 1.0e-3 m^3/s
+#   2.90 to 3.10 h  : smooth ramp from 1.0e-3 to 1.9e-3 m^3/s
+#   3.10 to 18.95 h : hold 1.9e-3 m^3/s
+#   18.95 to 19.05 h: smooth shutdown ramp to 0 m^3/s
+#   19.05 to 96 h   : shut-in and recovery
+#
+# The symmetric piecewise-linear ramps preserve the 118.44 m^3 injected by
+# the original STEP schedule through shut-in while removing instantaneous
+# source discontinuities from the two-way nonlinear solve.
 #
 # Validated numerical infrastructure
 # ----------------------------------
@@ -14,22 +23,16 @@
 # Flow materials  : bartlesville_hec_lime_v5_interfaces_material_ids.h5
 # Flow boundaries : boundary_ex_v5/*.ex
 #
-# This deck preserves the material properties and mechanical boundary
-# conditions used in the successful V5 smoke, two-way, and restart tests.
-#
-# INJECTION-HISTORY INTERPRETATION
-# --------------------------------
-# The original 96-hour deck omitted INTERPOLATION, for which PFLOTRAN uses
-# STEP interpolation by default. This deck writes INTERPOLATION STEP
-# explicitly so the old physical schedule is preserved:
-#
-#   0.0 to 0.5 h   : 0.0 m^3/s
-#   0.5 to 3.0 h   : 1.0e-3 m^3/s
-#   3.0 to 19.0 h  : 1.9e-3 m^3/s
-#   19.0 to 96.0 h : 0.0 m^3/s (shut-in/recovery)
-#
-# Change STEP to LINEAR only if the four tabulated values are known to be
-# continuous rate-history waypoints rather than operating stages.
+# Numerical stabilization
+# -----------------------
+# * TWO_WAY_COUPLED physics is retained.
+# * Pump changes use INTERPOLATION LINEAR and synchronized ramp waypoints.
+# * Maximum timesteps are tightened before and during all pump transitions.
+# * Pressure/saturation governors limit accepted state changes.
+# * Timestep cuts are stronger and timestep regrowth is capped.
+# * Newton uses the PETSc trust-region method (SNES_TYPE NTR).
+# * The flow/geomechanics exchange interval is reduced to 0.005 h.
+# * Explicit checkpoints are staggered away from rate and output events.
 # ============================================================
 
 SIMULATION
@@ -51,8 +54,9 @@ SIMULATION
   /
 
   CHECKPOINT
-    PERIODIC TIME 12.d0 hour
-    TIMES hour 3.d0 18.95d0 19.d0 20.d0
+    # Explicit restart writes avoid pump-ramp and HDF5-output timestamps.
+    # PFLOTRAN also writes the normal final restart after reaching 96 h.
+    TIMES hour 3.d-1 2.5d0 3.7d0 11.5d0 18.4d0 19.4d0 23.5d0 35.5d0 47.5d0 59.5d0 71.5d0 83.5d0 95.5d0
     FORMAT HDF5
     TIME_UNITS hour
   /
@@ -70,27 +74,54 @@ END
 NUMERICAL_METHODS FLOW
   TIMESTEPPER
     INITIAL_TIMESTEP_SIZE 1.d-6 day
-    # Conservative early-time resolution, controlled growth, and a
-    # deliberately refined window around the 19 h shut-in transition.
-    MAXIMUM_TIMESTEP_SIZE 5.d-3  hour at 0.d0    hour
-    MAXIMUM_TIMESTEP_SIZE 2.d-2  hour at 1.d-1   hour
-    MAXIMUM_TIMESTEP_SIZE 5.d-2  hour at 5.d-1   hour
-    MAXIMUM_TIMESTEP_SIZE 1.d-1  hour at 3.d0    hour
-    MAXIMUM_TIMESTEP_SIZE 2.5d-2 hour at 18.5d0  hour
-    MAXIMUM_TIMESTEP_SIZE 5.d-3  hour at 18.9d0  hour
-    MAXIMUM_TIMESTEP_SIZE 1.d-2  hour at 19.d0   hour
-    MAXIMUM_TIMESTEP_SIZE 5.d-2  hour at 19.1d0  hour
-    MAXIMUM_TIMESTEP_SIZE 2.5d-1 hour at 20.d0   hour
-    MAXIMUM_TIMESTEP_SIZE 5.d-1  hour at 24.d0   hour
-    PRESSURE_CHANGE_GOVERNOR 1.d5
-    SATURATION_CHANGE_GOVERNOR 1.d-1
-    TIMESTEP_REDUCTION_FACTOR 5.d-1
+
+    # Quiescent startup.
+    MAXIMUM_TIMESTEP_SIZE 5.d-3 hour at 0.d0 hour
+
+    # Resolve the 0.45-0.55 h startup ramp.
+    MAXIMUM_TIMESTEP_SIZE 5.d-4 hour at 4.d-1 hour
+
+    # Controlled recovery after startup.
+    MAXIMUM_TIMESTEP_SIZE 2.d-3 hour at 6.d-1 hour
+    MAXIMUM_TIMESTEP_SIZE 5.d-3 hour at 1.d0 hour
+
+    # Resolve the 2.90-3.10 h full-rate ramp.
+    MAXIMUM_TIMESTEP_SIZE 5.d-4 hour at 2.8d0 hour
+
+    # Controlled recovery after the second ramp.
+    MAXIMUM_TIMESTEP_SIZE 2.d-3 hour at 3.2d0 hour
+    MAXIMUM_TIMESTEP_SIZE 1.d-2 hour at 3.5d0 hour
+    MAXIMUM_TIMESTEP_SIZE 2.d-2 hour at 6.d0 hour
+    MAXIMUM_TIMESTEP_SIZE 5.d-2 hour at 12.d0 hour
+
+    # Resolve the 18.95-19.05 h shutdown ramp.
+    MAXIMUM_TIMESTEP_SIZE 5.d-4 hour at 18.8d0 hour
+
+    # Controlled recovery after shut-in.
+    MAXIMUM_TIMESTEP_SIZE 2.d-3 hour at 19.2d0 hour
+    MAXIMUM_TIMESTEP_SIZE 5.d-3 hour at 19.5d0 hour
+    MAXIMUM_TIMESTEP_SIZE 2.d-2 hour at 20.d0 hour
+    MAXIMUM_TIMESTEP_SIZE 1.d-1 hour at 24.d0 hour
+    MAXIMUM_TIMESTEP_SIZE 2.5d-1 hour at 36.d0 hour
+    MAXIMUM_TIMESTEP_SIZE 5.d-1 hour at 48.d0 hour
+
+    PRESSURE_CHANGE_GOVERNOR 5.d4
+    SATURATION_CHANGE_GOVERNOR 2.d-2
+
+    TIMESTEP_REDUCTION_FACTOR 2.5d-1
+    TIMESTEP_MAXIMUM_GROWTH_FACTOR 1.2d0
+    NUM_STEPS_AFTER_TS_CUT 10
+
     MAXIMUM_CONSECUTIVE_TS_CUTS 20
     MAXIMUM_NUMBER_OF_TIMESTEPS 500000
   /
+
   NEWTON_SOLVER
+    SNES_TYPE NTR
+    DTOL 1.d3
     MAXIMUM_NUMBER_OF_ITERATIONS 50
   /
+
   LINEAR_SOLVER
     SOLVER BCGS
     PRECONDITIONER ASM
@@ -98,7 +129,6 @@ NUMERICAL_METHODS FLOW
     RTOL 1.d-8
   /
 END
-
 TIME
   FINAL_TIME 96.d0 hour
 END
@@ -236,7 +266,7 @@ OUTPUT
   SCREEN PERIODIC 20
   TIME_UNITS hour
   SNAPSHOT_FILE
-    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 5.d-1 1.d0 2.d0 3.d0 6.d0 9.d0 12.d0 15.d0 17.d0 18.d0 18.5d0 18.9d0 18.95d0 19.d0 19.01d0 19.02d0 19.05d0 19.1d0 19.25d0 19.5d0 20.d0 22.d0 24.d0 36.d0 48.d0 72.d0 96.d0
+    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 4.5d-1 5.d-1 5.5d-1 1.d0 2.d0 2.9d0 3.d0 3.1d0 6.d0 9.d0 12.d0 15.d0 17.d0 18.d0 18.5d0 18.9d0 18.95d0 19.d0 19.05d0 19.1d0 19.25d0 19.5d0 20.d0 22.d0 24.d0 36.d0 48.d0 60.d0 72.d0 84.d0 96.d0
     FORMAT HDF5
     VARIABLES
       LIQUID_PRESSURE
@@ -315,9 +345,8 @@ FLOW_CONDITION noflow
   LIQUID_FLUX 0.d0
 END
 
-# Field injection/recovery schedule.
-# STEP is explicit and preserves the behavior of the old 96-hour input deck.
-# SYNC_TIMESTEP_WITH_UPDATE forces a timestep boundary at 0.5, 3, and 19 h.
+# Volume-preserving, smooth injection and shut-in schedule.
+# SYNC_TIMESTEP_WITH_UPDATE forces a timestep boundary at every ramp waypoint.
 FLOW_CONDITION injection
   TYPE
     RATE SCALED_VOLUMETRIC_RATE VOLUME
@@ -326,11 +355,37 @@ FLOW_CONDITION injection
   RATE LIST
     TIME_UNITS hour
     DATA_UNITS m^3/s
-    INTERPOLATION STEP
-    0.d0     0.d0
-    0.5d0   1.d-3
-    3.d0    1.9d-3
-    19.d0   0.d0
+    INTERPOLATION LINEAR
+
+    0.d0       0.d0
+
+    # Smooth startup ramp centered on the original 0.5 h switch.
+    0.45d0     0.d0
+    0.475d0    1.464466094d-4
+    0.50d0     5.000000000d-4
+    0.525d0    8.535533906d-4
+    0.55d0     1.000000000d-3
+
+    # Hold the first operating rate.
+    2.90d0     1.000000000d-3
+
+    # Smooth full-rate ramp centered on the original 3 h switch.
+    2.95d0     1.131801948d-3
+    3.00d0     1.450000000d-3
+    3.05d0     1.768198052d-3
+    3.10d0     1.900000000d-3
+
+    # Hold full-rate injection until the shutdown ramp.
+    18.95d0    1.900000000d-3
+
+    # Smooth shutdown ramp centered on the original 19 h switch.
+    18.975d0   1.621751442d-3
+    19.00d0    9.500000000d-4
+    19.025d0   2.782485579d-4
+    19.05d0    0.d0
+
+    # Shut-in and recovery.
+    96.d0      0.d0
   /
 END
 
@@ -389,9 +444,9 @@ GEOMECHANICS
     GRAVITY 0.d0 0.d0 0.d0
   END
 
-  # Retain the coupling interval used in the validated V5 coupled tests.
+  # Reduced exchange interval for the stabilized two-way solution.
   GEOMECHANICS_TIME
-    COUPLING_TIMESTEP_SIZE 1.d-2 hour
+    COUPLING_TIMESTEP_SIZE 5.d-3 hour
   END
 
   # ---------------------------------------------------------------------------
@@ -639,7 +694,7 @@ GEOMECHANICS
   # vertically, and the top surface remains traction-free.
   # Explicit times keep flow and geomechanics visualization products aligned.
   GEOMECHANICS_OUTPUT
-    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 5.d-1 1.d0 2.d0 3.d0 6.d0 9.d0 12.d0 15.d0 17.d0 18.d0 18.5d0 18.9d0 18.95d0 19.d0 19.01d0 19.02d0 19.05d0 19.1d0 19.25d0 19.5d0 20.d0 22.d0 24.d0 36.d0 48.d0 72.d0 96.d0
+    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 4.5d-1 5.d-1 5.5d-1 1.d0 2.d0 2.9d0 3.d0 3.1d0 6.d0 9.d0 12.d0 15.d0 17.d0 18.d0 18.5d0 18.9d0 18.95d0 19.d0 19.05d0 19.1d0 19.25d0 19.5d0 20.d0 22.d0 24.d0 36.d0 48.d0 60.d0 72.d0 84.d0 96.d0
     FORMAT HDF5
   END
 

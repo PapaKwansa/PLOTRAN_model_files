@@ -362,7 +362,15 @@ def check_deck(audit: Audit, path: Path, production: bool) -> None:
     tokens = [
         "FLOW_COUPLING TWO_WAY_COUPLED",
         expected_final,
-        "INTERPOLATION STEP",
+        "INTERPOLATION LINEAR",
+        "SNES_TYPE NTR",
+        "DTOL 1.d3",
+        "PRESSURE_CHANGE_GOVERNOR 5.d4",
+        "SATURATION_CHANGE_GOVERNOR 2.d-2",
+        "TIMESTEP_REDUCTION_FACTOR 2.5d-1",
+        "TIMESTEP_MAXIMUM_GROWTH_FACTOR 1.2d0",
+        "NUM_STEPS_AFTER_TS_CUT 10",
+        "COUPLING_TIMESTEP_SIZE 5.d-3 hour",
         "bartlesville_hec_lime_v5_interfaces_median.uge",
         "bartlesville_hec_lime_v5_interfaces.ugi",
         "bartlesville_hec_lime_v5_interfaces_median.mapping",
@@ -376,7 +384,7 @@ def check_deck(audit: Audit, path: Path, production: bool) -> None:
     if missing:
         audit.fail(f"deck:{label}", "missing tokens: " + ", ".join(missing))
     else:
-        audit.pass_(f"deck:{label}", f"two-way, STEP schedule, {expected_final}, V5 paths, outputs, checkpoints")
+        audit.pass_(f"deck:{label}", f"two-way, LINEAR ramp schedule, stabilized controls, {expected_final}, V5 paths, outputs, checkpoints")
 
     if "ONE_WAY_COUPLED" in text:
         audit.fail(f"deck:{label}:oneway", "contains ONE_WAY_COUPLED")

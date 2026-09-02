@@ -186,7 +186,15 @@ def main() -> int:
     deck_text = deck.read_text(encoding="utf-8")
     required_tokens = {
         "two-way coupling": "FLOW_COUPLING TWO_WAY_COUPLED",
-        "explicit interpolation": "INTERPOLATION ",
+        "linear ramp interpolation": "INTERPOLATION LINEAR",
+        "trust-region Newton": "SNES_TYPE NTR",
+        "Newton divergence tolerance": "DTOL 1.d3",
+        "pressure governor": "PRESSURE_CHANGE_GOVERNOR 5.d4",
+        "saturation governor": "SATURATION_CHANGE_GOVERNOR 2.d-2",
+        "failed-step reduction": "TIMESTEP_REDUCTION_FACTOR 2.5d-1",
+        "controlled timestep growth": "TIMESTEP_MAXIMUM_GROWTH_FACTOR 1.2d0",
+        "post-cut hold": "NUM_STEPS_AFTER_TS_CUT 10",
+        "reduced coupling interval": "COUPLING_TIMESTEP_SIZE 5.d-3 hour",
         "checkpointing": "CHECKPOINT",
         "median UGE": "bartlesville_hec_lime_v5_interfaces_median.uge",
         "canonical UGI": "bartlesville_hec_lime_v5_interfaces.ugi",
