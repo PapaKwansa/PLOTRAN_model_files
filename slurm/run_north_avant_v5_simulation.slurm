@@ -51,15 +51,26 @@ export PETSC_ARCH="${PETSC_ARCH:-arch-linux-c-opt}"
 PFLOTRAN_BIN="${PFLOTRAN_BIN:-/home/harhin/PFLOTRAN/petsc/pflotran/src/pflotran/pflotran}"
 export PFLOTRAN_BIN
 
-# Module names may be overridden at submission if Palmetto changes spelling.
+# NAV5 MPICH-RUNTIME FIX
+#
+# arch-linux-c-opt contains its own MPICH/Hydra runtime. Never launch this
+# PFLOTRAN executable with a module-provided OpenMPI mpiexec or prterun.
 GCC_MODULE="${GCC_MODULE:-gcc}"
-OPENMPI_MODULE="${OPENMPI_MODULE:-openmpi/5.0.1}"
+
+# This module is used only by h5ls_safe() in an isolated subprocess. It is
+# never loaded into the PFLOTRAN process environment.
 HDF5_MODULE="${HDF5_MODULE:-hdf5/1.14.3}"
 
-# Palmetto recommends srun for Slurm-integrated MPI launches. Set
-# MPI_LAUNCHER=mpiexec only if the locally built OpenMPI executable is not
-# compatible with srun on the selected nodes.
-MPI_LAUNCHER="${MPI_LAUNCHER:-mpiexec}"
+PETSC_BIN="${PETSC_BIN:-$PETSC_DIR/$PETSC_ARCH/bin}"
+PETSC_LIB="${PETSC_LIB:-$PETSC_DIR/$PETSC_ARCH/lib}"
+PETSC_MPIEXEC="${PETSC_MPIEXEC:-$PETSC_BIN/mpiexec}"
+PETSC_H5LS="${PETSC_H5LS:-$PETSC_BIN/h5ls}"
+
+# Intentionally non-configurable for this validated PFLOTRAN executable.
+MPI_LAUNCHER="petsc-mpiexec"
+
+MPIEXEC_VERSION_TEXT=""
+H5LS_MODE=""
 
 # Copy newly completed checkpoint files to persistent storage during long runs.
 CHECKPOINT_SYNC_SECONDS="${CHECKPOINT_SYNC_SECONDS:-600}"
@@ -85,6 +96,60 @@ die() {
   exit 2
 }
 
+
+resolve_petsc_runtime() {
+  [[ -d "$PETSC_BIN" ]]     || die "PETSc bin directory not found: $PETSC_BIN"
+
+  [[ -d "$PETSC_LIB" ]]     || die "PETSc lib directory not found: $PETSC_LIB"
+
+  if [[ ! -x "$PETSC_MPIEXEC" ]]; then
+    if [[ -x "$PETSC_BIN/mpiexec.hydra" ]]; then
+      PETSC_MPIEXEC="$PETSC_BIN/mpiexec.hydra"
+    else
+      die "PETSc MPICH/Hydra launcher not found under $PETSC_BIN."
+    fi
+  fi
+
+  PETSC_MPIEXEC="$(readlink -f "$PETSC_MPIEXEC")"
+  export PETSC_MPIEXEC
+
+  MPIEXEC_VERSION_TEXT="$(
+    "$PETSC_MPIEXEC" -version 2>&1 || true
+  )"
+
+  if grep -Eqi     'Open MPI|OpenRTE|PRRTE|prterun'     <<< "$MPIEXEC_VERSION_TEXT"
+  then
+    die "Resolved launcher is OpenMPI/PRRTE; expected PETSc MPICH/Hydra."
+  fi
+
+  if ! grep -Eqi     'HYDRA|MPICH'     <<< "$MPIEXEC_VERSION_TEXT"
+  then
+    die "Resolved launcher did not identify itself as MPICH/Hydra."
+  fi
+
+  if [[ -x "$PETSC_H5LS" ]]; then
+    H5LS_MODE="petsc-bundled"
+  else
+    H5LS_MODE="isolated-hdf5-module"
+  fi
+}
+
+
+h5ls_safe() {
+  if [[ -x "$PETSC_H5LS" ]]; then
+    "$PETSC_H5LS" "$@"
+    return
+  fi
+
+  (
+    module purge
+    module load "$GCC_MODULE"
+    module load "$HDF5_MODULE"
+
+    command h5ls "$@"
+  )
+}
+
 remove_conda_paths() {
   local input="${1:-}"
   local output=""
@@ -98,7 +163,7 @@ remove_conda_paths() {
     lower="${entry,,}"
 
     case "$lower" in
-      *anaconda*|*miniconda*|*conda*)
+      *anaconda*|*miniconda*|*conda*|*openmpi*|*prrte*|*pmix*)
         ;;
       *)
         if [[ -z "$output" ]]; then
@@ -251,7 +316,7 @@ sync_checkpoints_once() {
 
     # Do not promote a partially written HDF5 checkpoint.
     if [[ "$source_file" == *.h5 ]]; then
-      if ! h5ls -r "$temporary" >/dev/null 2>&1; then
+      if ! h5ls_safe -r "$temporary" >/dev/null 2>&1; then
         log "Checkpoint copy is not yet a complete HDF5 file; will retry: $base"
         rm -f "$temporary"
         continue
@@ -334,16 +399,18 @@ trap 'on_signal INT' INT
 
 module purge
 module load "$GCC_MODULE"
-module load "$OPENMPI_MODULE"
-module load "$HDF5_MODULE"
 
-# Prevent Anaconda/Miniconda libraries and executables from shadowing the
-# PETSc/OpenMPI/HDF5 stack used to build PFLOTRAN.
-export PATH="$(remove_conda_paths "$PATH")"
-if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
-  export LD_LIBRARY_PATH="$(remove_conda_paths "$LD_LIBRARY_PATH")"
-fi
-unset CONDA_PREFIX CONDA_DEFAULT_ENV PYTHONPATH PYTHONHOME
+# Remove inherited Conda/OpenMPI paths and place the PETSc architecture first.
+CLEAN_PATH="$(remove_conda_paths "$PATH")"
+CLEAN_LD_LIBRARY_PATH="$(
+  remove_conda_paths "${LD_LIBRARY_PATH:-}"
+)"
+
+export PATH="$PETSC_BIN:$CLEAN_PATH"
+export LD_LIBRARY_PATH="$PETSC_LIB${CLEAN_LD_LIBRARY_PATH:+:$CLEAN_LD_LIBRARY_PATH}"
+
+unset   LD_PRELOAD   CONDA_PREFIX   CONDA_DEFAULT_ENV   PYTHONPATH   PYTHONHOME   OPAL_PREFIX
+
 hash -r
 
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
@@ -353,17 +420,14 @@ export NUMEXPR_NUM_THREADS=1
 export HDF5_USE_FILE_LOCKING="${HDF5_USE_FILE_LOCKING:-FALSE}"
 
 find_pflotran
+resolve_petsc_runtime
 
-for command_name in rsync sha256sum h5ls srun stat awk; do
+for command_name in rsync sha256sum stat awk ldd readlink grep; do
   command -v "$command_name" >/dev/null 2>&1 \
     || die "Required command is unavailable after module loading: $command_name"
 done
 
-if [[ "$MPI_LAUNCHER" == "mpiexec" ]]; then
-  command -v mpiexec >/dev/null 2>&1 || die "MPI_LAUNCHER=mpiexec but mpiexec is unavailable."
-elif [[ "$MPI_LAUNCHER" != "srun" ]]; then
-  die "MPI_LAUNCHER must be either srun or mpiexec."
-fi
+[[ "$MPI_LAUNCHER" == "petsc-mpiexec" ]]   || die "Unsafe MPI launcher selection: $MPI_LAUNCHER"
 
 verify_source_bundle
 
@@ -434,13 +498,37 @@ cp -a "$RESULT_DIR/INPUT_SHA256SUMS" "$WORK_DIR/"
   echo "petsc_arch=$PETSC_ARCH"
   echo "pflotran_bin=$PFLOTRAN_BIN"
   echo "mpi_launcher=$MPI_LAUNCHER"
+  echo "mpi_exec=$PETSC_MPIEXEC"
+  echo "mpi_exec_realpath=$(readlink -f "$PETSC_MPIEXEC")"
+  echo "h5ls_mode=$H5LS_MODE"
   echo "start_time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$RESULT_DIR/run_metadata.txt"
 
 module list 2> "$RESULT_DIR/module_list.txt" || true
 env | sort > "$RESULT_DIR/environment.txt"
 sha256sum "$PFLOTRAN_BIN" > "$RESULT_DIR/PFLOTRAN_SHA256SUM"
+sha256sum "$PETSC_MPIEXEC" > "$RESULT_DIR/MPIEXEC_SHA256SUM"
+printf '%s\n' "$MPIEXEC_VERSION_TEXT" > "$RESULT_DIR/MPIEXEC_VERSION.txt"
 ldd "$PFLOTRAN_BIN" > "$RESULT_DIR/PFLOTRAN_LDD.txt" 2>&1 || true
+
+if grep -q   'not found'   "$RESULT_DIR/PFLOTRAN_LDD.txt"
+then
+  grep     'not found'     "$RESULT_DIR/PFLOTRAN_LDD.txt"     >&2
+
+  die "PFLOTRAN has unresolved shared-library dependencies."
+fi
+
+if grep -Eqi   '/openmpi-|libmpi\.so\.40|libmpi_usempif08\.so\.40|libmpi_usempi_ignore_tkr\.so\.40|libmpi_mpifh\.so\.40|libopen-pal\.so|libopen-rte\.so|libprrte'   "$RESULT_DIR/PFLOTRAN_LDD.txt"
+then
+  grep -Ei     '/openmpi-|libmpi\.so\.40|libmpi_usempif08\.so\.40|libmpi_usempi_ignore_tkr\.so\.40|libmpi_mpifh\.so\.40|libopen-pal\.so|libopen-rte\.so|libprrte'     "$RESULT_DIR/PFLOTRAN_LDD.txt"     >&2
+
+  die "OpenMPI contamination detected in the PFLOTRAN process."
+fi
+
+if ! grep -Fq   "libmpi.so.12 => $PETSC_LIB/"   "$RESULT_DIR/PFLOTRAN_LDD.txt"
+then
+  die "Expected PETSc MPICH libmpi.so.12 was not resolved."
+fi
 scontrol show job -dd "$SLURM_JOB_ID" > "$RESULT_DIR/slurm_job_definition.txt" 2>&1 || true
 df -h "$WORK_DIR" > "$RESULT_DIR/work_filesystem.txt" 2>&1 || true
 
@@ -459,6 +547,7 @@ log "Results      : $RESULT_DIR"
 log "PFLOTRAN     : $PFLOTRAN_BIN"
 log "PETSc arch   : $PETSC_ARCH"
 log "Launcher     : $MPI_LAUNCHER"
+log "MPI exec     : $PETSC_MPIEXEC"
 log "============================================================"
 
 # -----------------------------------------------------------------------------
@@ -467,23 +556,10 @@ log "============================================================"
 
 cd "$WORK_DIR"
 
-case "$MPI_LAUNCHER" in
-  srun)
-    LAUNCH_COMMAND=(
-      srun
-      --ntasks="$SLURM_NTASKS"
-      --cpus-per-task="${SLURM_CPUS_PER_TASK:-1}"
-      --cpu-bind=cores
-      --kill-on-bad-exit=1
-    )
-    ;;
-  mpiexec)
-    LAUNCH_COMMAND=(
-      mpiexec
-      -n "$SLURM_NTASKS"
-    )
-    ;;
-esac
+LAUNCH_COMMAND=(
+  "$PETSC_MPIEXEC"
+  -n "$SLURM_NTASKS"
+)
 
 LOG_FILE="$WORK_DIR/${INPUT_PREFIX}.log"
 RUN_STATUS_FILE="$WORK_DIR/.pflotran_exit_status"
@@ -543,7 +619,7 @@ for h5_file in "$WORK_DIR"/"${INPUT_PREFIX}"*.h5; do
   [[ -f "$h5_file" ]] || continue
   HDF5_COUNT=$((HDF5_COUNT + 1))
 
-  if ! h5ls -r "$h5_file" \
+  if ! h5ls_safe -r "$h5_file" \
     > "$WORK_DIR/$(basename "${h5_file%.h5}")_h5_tree.txt"
   then
     log "Unreadable HDF5 output: $h5_file"
@@ -557,7 +633,7 @@ if (( HDF5_COUNT == 0 )); then
 fi
 
 CRITICAL_PATTERN='fatal|diverg|nan|infinite|zero pivot|singular|maximum consecutive|caught signal|segmentation'
-if grep -Ein "$CRITICAL_PATTERN" "$LOG_FILE" \
+if grep -aEin "$CRITICAL_PATTERN" "$LOG_FILE" \
   > "$WORK_DIR/${INPUT_PREFIX}_critical_failure_scan.txt"
 then
   log "Critical failure terms were found in the PFLOTRAN log."
@@ -566,7 +642,7 @@ else
   : > "$WORK_DIR/${INPUT_PREFIX}_critical_failure_scan.txt"
 fi
 
-grep -E \
+grep -aE \
   'Step|FLOW TS|GEOMECHANICS TS|Wall Clock|PFLOTRAN exit status|Dump checkpoint|Restarting with checkpoint' \
   "$LOG_FILE" \
   | tail -n 250 \
