@@ -1,0 +1,773 @@
+{
+  "coordinate_convention": {
+    "description": "elevation relative to model top",
+    "top_z_m": 0.0,
+    "bottom_z_m": -1535.0,
+    "conversion_from_previous_geometry": "Bartlesville sand now sits above the basal layer; the HEC is placed inside Bartlesville directly above the basal interface; model bottom restored to z=-1535 m; strainmeter depths converted to negative-z convention"
+  },
+  "domain": {
+    "min": [
+      0.0,
+      0.0,
+      -1535.0
+    ],
+    "max": [
+      10000.0,
+      10000.0,
+      0.0
+    ],
+    "size": [
+      10000.0,
+      10000.0,
+      1535.0
+    ]
+  },
+  "layers": [
+    {
+      "number": 6,
+      "material_id": 1,
+      "name": "upper_overburden",
+      "z_min": -25.0,
+      "z_max": 0.0
+    },
+    {
+      "number": 5,
+      "material_id": 10,
+      "name": "shallow_limestone",
+      "z_min": -35.0,
+      "z_max": -25.0
+    },
+    {
+      "number": 1,
+      "material_id": 1,
+      "name": "lower_overburden",
+      "z_min": -500.0,
+      "z_max": -35.0
+    },
+    {
+      "number": 2,
+      "material_id": 2,
+      "name": "bartlesville_sand",
+      "z_min": -530.0,
+      "z_max": -500.0
+    },
+    {
+      "number": 3,
+      "material_id": 3,
+      "name": "basal_layer",
+      "z_min": -535.0,
+      "z_max": -530.0
+    },
+    {
+      "number": 4,
+      "material_id": 4,
+      "name": "underburden",
+      "z_min": -1535.0,
+      "z_max": -535.0
+    }
+  ],
+  "representative_shallow_limestone": {
+    "material_id": 10,
+    "top_z_m": -25.0,
+    "bottom_z_m": -35.0,
+    "status": "provisional equivalent layer centered on AVN2 and AVN87 at z=-30 m"
+  },
+  "vertical_bands": [
+    {
+      "label": "UB_bottom_coarse",
+      "z_min": -1535.0,
+      "z_max": -1300.0,
+      "geological_layer": 4,
+      "note": "deepest underburden"
+    },
+    {
+      "label": "UB_mid_coarse",
+      "z_min": -1300.0,
+      "z_max": -1050.0,
+      "geological_layer": 4,
+      "note": "deep underburden"
+    },
+    {
+      "label": "UB_upper_transition",
+      "z_min": -1050.0,
+      "z_max": -535.0,
+      "geological_layer": 4,
+      "note": "approaches basal layer"
+    },
+    {
+      "label": "BASAL_lower_refined",
+      "z_min": -535.0,
+      "z_max": -530.0,
+      "geological_layer": 3,
+      "note": "basal layer"
+    },
+    {
+      "label": "BARTLESVILLE_hec_band",
+      "z_min": -530.0,
+      "z_max": -525.0,
+      "geological_layer": 2,
+      "note": "HEC host interval in Bartlesville sandstone"
+    },
+    {
+      "label": "BARTLESVILLE_upper_refined",
+      "z_min": -525.0,
+      "z_max": -500.0,
+      "geological_layer": 2,
+      "note": "Bartlesville sandstone above the HEC"
+    },
+    {
+      "label": "OVERBURDEN_lower_transition",
+      "z_min": -500.0,
+      "z_max": -400.0,
+      "geological_layer": 1,
+      "note": "lower overburden"
+    },
+    {
+      "label": "OVERBURDEN_transition_1",
+      "z_min": -400.0,
+      "z_max": -250.0,
+      "geological_layer": 1,
+      "note": "middle overburden"
+    },
+    {
+      "label": "OVERBURDEN_transition_2",
+      "z_min": -250.0,
+      "z_max": -100.0,
+      "geological_layer": 1,
+      "note": "upper part of lower overburden"
+    },
+    {
+      "label": "LOWER_OVERBURDEN_limestone_approach",
+      "z_min": -100.0,
+      "z_max": -35.0,
+      "geological_layer": 1,
+      "note": "approaches shallow limestone"
+    },
+    {
+      "label": "SHALLOW_LIMESTONE",
+      "z_min": -35.0,
+      "z_max": -25.0,
+      "geological_layer": 5,
+      "note": "representative AVN2/AVN87 host limestone"
+    },
+    {
+      "label": "UPPER_OVERBURDEN",
+      "z_min": -25.0,
+      "z_max": 0.0,
+      "geological_layer": 6,
+      "note": "overburden above shallow limestone"
+    }
+  ],
+  "z_levels_m": [
+    -1535.0,
+    -1300.0,
+    -1050.0,
+    -535.0,
+    -530.0,
+    -525.0,
+    -500.0,
+    -400.0,
+    -250.0,
+    -100.0,
+    -35.0,
+    -25.0,
+    0.0
+  ],
+  "matrix": {
+    "x_axis_m": [
+      0.0,
+      125.0,
+      250.0,
+      375.0,
+      500.0,
+      625.0,
+      750.0,
+      875.0,
+      1000.0,
+      1125.0,
+      1250.0,
+      1375.0,
+      1500.0,
+      1625.0,
+      1750.0,
+      1875.0,
+      2000.0,
+      2125.0,
+      2250.0,
+      2375.0,
+      2500.0,
+      2625.0,
+      2750.0,
+      2875.0,
+      3000.0,
+      3125.0,
+      3250.0,
+      3375.0,
+      3500.0,
+      3625.0,
+      3750.0,
+      3875.0,
+      4000.0,
+      4125.0,
+      4250.0,
+      4375.0,
+      4500.0,
+      4625.0,
+      4750.0,
+      4875.0,
+      5000.0,
+      5125.0,
+      5250.0,
+      5375.0,
+      5500.0,
+      5625.0,
+      5750.0,
+      5875.0,
+      6000.0,
+      6125.0,
+      6250.0,
+      6375.0,
+      6500.0,
+      6625.0,
+      6750.0,
+      6875.0,
+      7000.0,
+      7125.0,
+      7250.0,
+      7375.0,
+      7500.0,
+      7625.0,
+      7750.0,
+      7875.0,
+      8000.0,
+      8125.0,
+      8250.0,
+      8375.0,
+      8500.0,
+      8625.0,
+      8750.0,
+      8875.0,
+      9000.0,
+      9125.0,
+      9250.0,
+      9375.0,
+      9500.0,
+      9625.0,
+      9750.0,
+      9875.0,
+      10000.0
+    ],
+    "y_axis_m": [
+      0.0,
+      125.0,
+      250.0,
+      375.0,
+      500.0,
+      625.0,
+      750.0,
+      875.0,
+      1000.0,
+      1125.0,
+      1250.0,
+      1375.0,
+      1500.0,
+      1625.0,
+      1750.0,
+      1875.0,
+      2000.0,
+      2125.0,
+      2250.0,
+      2375.0,
+      2500.0,
+      2625.0,
+      2750.0,
+      2875.0,
+      3000.0,
+      3125.0,
+      3250.0,
+      3375.0,
+      3500.0,
+      3625.0,
+      3750.0,
+      3875.0,
+      4000.0,
+      4125.0,
+      4250.0,
+      4375.0,
+      4500.0,
+      4625.0,
+      4750.0,
+      4875.0,
+      5000.0,
+      5125.0,
+      5250.0,
+      5375.0,
+      5500.0,
+      5625.0,
+      5750.0,
+      5875.0,
+      6000.0,
+      6125.0,
+      6250.0,
+      6375.0,
+      6500.0,
+      6625.0,
+      6750.0,
+      6875.0,
+      7000.0,
+      7125.0,
+      7250.0,
+      7375.0,
+      7500.0,
+      7625.0,
+      7750.0,
+      7875.0,
+      8000.0,
+      8125.0,
+      8250.0,
+      8375.0,
+      8500.0,
+      8625.0,
+      8750.0,
+      8875.0,
+      9000.0,
+      9125.0,
+      9250.0,
+      9375.0,
+      9500.0,
+      9625.0,
+      9750.0,
+      9875.0,
+      10000.0
+    ],
+    "rotated_hec_lattice_step_m": 20.0
+  },
+  "meshing": {
+    "strategy": "closed target PLCs, graded target shells, nested HEC halos, and conforming local refinement of the -530/-535 m PLC interfaces",
+    "tetgen_default_flags": "-pnAef",
+    "point_count": 140451,
+    "facet_count": 114612,
+    "holes": 0,
+    "regions": 10,
+    "hec_refinement_zones": [
+      {
+        "name": "core_20m",
+        "x_half_extent_m": 500.0,
+        "y_half_extent_m": 500.0,
+        "xy_spacing_m": 20.0,
+        "inner_x_half_extent_m": 0.0,
+        "inner_y_half_extent_m": 0.0,
+        "vertical_levels_m": [
+          -625.0,
+          -600.0,
+          -575.0,
+          -550.0,
+          -540.0,
+          -532.5,
+          -527.5,
+          -522.5,
+          -515.0
+        ],
+        "phase_u": 0.17,
+        "phase_v": 0.41
+      },
+      {
+        "name": "inner_transition_40m",
+        "x_half_extent_m": 850.0,
+        "y_half_extent_m": 850.0,
+        "xy_spacing_m": 40.0,
+        "inner_x_half_extent_m": 500.0,
+        "inner_y_half_extent_m": 500.0,
+        "vertical_levels_m": [
+          -700.0,
+          -650.0,
+          -625.0,
+          -600.0,
+          -575.0,
+          -550.0,
+          -540.0,
+          -532.5,
+          -527.5,
+          -522.5,
+          -515.0,
+          -505.0,
+          -490.0,
+          -450.0
+        ],
+        "phase_u": 0.31,
+        "phase_v": 0.67
+      },
+      {
+        "name": "outer_transition_80m",
+        "x_half_extent_m": 1350.0,
+        "y_half_extent_m": 1350.0,
+        "xy_spacing_m": 80.0,
+        "inner_x_half_extent_m": 850.0,
+        "inner_y_half_extent_m": 850.0,
+        "vertical_levels_m": [
+          -900.0,
+          -800.0,
+          -700.0,
+          -625.0,
+          -575.0,
+          -550.0,
+          -527.5,
+          -505.0,
+          -475.0,
+          -425.0
+        ],
+        "phase_u": 0.53,
+        "phase_v": 0.23
+      }
+    ],
+    "hec_refinement_points_by_zone": {
+      "core_20m": 22203,
+      "inner_transition_40m": 15211,
+      "outer_transition_80m": 6643
+    },
+    "hec_interface_refinement_specs": [
+      {
+        "name": "bartlesville_basal_interface",
+        "z_m": -530.0,
+        "zone_names": [
+          "core_20m",
+          "inner_transition_40m",
+          "outer_transition_80m"
+        ]
+      },
+      {
+        "name": "basal_underburden_interface",
+        "z_m": -535.0,
+        "zone_names": [
+          "core_20m",
+          "inner_transition_40m",
+          "outer_transition_80m"
+        ]
+      }
+    ],
+    "hec_interface_refinement_stats": {
+      "bartlesville_basal_interface": {
+        "candidate_points": 4333,
+        "embedded_points": 4245,
+        "skipped_near_coarse_edges": 88,
+        "coarse_facets_replaced": 902,
+        "generated_facets": 21290
+      },
+      "basal_underburden_interface": {
+        "candidate_points": 4396,
+        "embedded_points": 4221,
+        "skipped_near_coarse_edges": 175,
+        "coarse_facets_replaced": 896,
+        "generated_facets": 21242
+      }
+    }
+  },
+  "hec": {
+    "name": "bartlesville_hec",
+    "material_id": 5,
+    "host_material_id": 2,
+    "representation": "tag_only",
+    "center": [
+      5000.0,
+      5000.0,
+      -527.5
+    ],
+    "center_xyz_m": [
+      5000.0,
+      5000.0,
+      -527.5
+    ],
+    "length_m": 580.0,
+    "width_m": 300.0,
+    "thickness_m": 5.0,
+    "bottom_z_m": -530.0,
+    "top_z_m": -525.0,
+    "azimuth_deg_east_of_north": 5.0,
+    "dip_deg": 0.0,
+    "axes": {
+      "length": [
+        0.08715574274765817,
+        0.9961946980917455,
+        0.0
+      ],
+      "width": [
+        0.9961946980917455,
+        -0.08715574274765817,
+        0.0
+      ],
+      "normal_up": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "tagging": {
+      "method": "oriented_rectangular_prism_in_local_coordinates",
+      "center_field": "center",
+      "z_range_m": [
+        -530.0,
+        -525.0
+      ]
+    }
+  },
+  "refinement_targets": [
+    {
+      "name": "injection_borehole",
+      "kind": "injection_borehole",
+      "purpose": "Injection well from the HEC top toward the model top",
+      "material_id": 6,
+      "surface_marker": 11,
+      "tag_shape": "vertical_cylinder",
+      "center_xyz_m": [
+        5000.0,
+        5000.0,
+        -527.5
+      ],
+      "tag_radius_m": 0.75,
+      "source_sensor_id": null,
+      "local_point_stats": {
+        "surface_points": 82,
+        "surface_facets": 160,
+        "surface_rings": 10,
+        "refinement_points": 833,
+        "attempted": 912,
+        "accepted": 833,
+        "rejected_domain": 72,
+        "rejected_spacing": 7,
+        "points_added": 915
+      },
+      "surface_topology": {
+        "facets": 160,
+        "edges": 240,
+        "bad_edges": 0
+      },
+      "tag_z_min_m": -529.75,
+      "tag_z_max_m": -525.25,
+      "tube_shells": [
+        {
+          "radius_m": 1.25,
+          "axial_spacing_m": 0.65,
+          "circumferential_points": 8,
+          "endpoint_padding_m": 0.8
+        },
+        {
+          "radius_m": 1.8,
+          "axial_spacing_m": 0.85,
+          "circumferential_points": 8,
+          "endpoint_padding_m": 1.0
+        },
+        {
+          "radius_m": 2.55,
+          "axial_spacing_m": 1.1,
+          "circumferential_points": 10,
+          "endpoint_padding_m": 1.3
+        },
+        {
+          "radius_m": 3.6,
+          "axial_spacing_m": 1.45,
+          "circumferential_points": 10,
+          "endpoint_padding_m": 1.8
+        },
+        {
+          "radius_m": 5.0,
+          "axial_spacing_m": 1.9,
+          "circumferential_points": 12,
+          "endpoint_padding_m": 2.4
+        },
+        {
+          "radius_m": 7.0,
+          "axial_spacing_m": 2.5,
+          "circumferential_points": 12,
+          "endpoint_padding_m": 3.2
+        },
+        {
+          "radius_m": 9.8,
+          "axial_spacing_m": 3.4,
+          "circumferential_points": 12,
+          "endpoint_padding_m": 4.2
+        },
+        {
+          "radius_m": 13.7,
+          "axial_spacing_m": 4.6,
+          "circumferential_points": 14,
+          "endpoint_padding_m": 5.6
+        },
+        {
+          "radius_m": 19.2,
+          "axial_spacing_m": 6.2,
+          "circumferential_points": 16,
+          "endpoint_padding_m": 7.5
+        },
+        {
+          "radius_m": 27.0,
+          "axial_spacing_m": 8.5,
+          "circumferential_points": 18,
+          "endpoint_padding_m": 10.0
+        },
+        {
+          "radius_m": 38.0,
+          "axial_spacing_m": 12.0,
+          "circumferential_points": 20,
+          "endpoint_padding_m": 14.0
+        },
+        {
+          "radius_m": 54.0,
+          "axial_spacing_m": 17.0,
+          "circumferential_points": 24,
+          "endpoint_padding_m": 20.0
+        }
+      ]
+    },
+    {
+      "name": "AVN2",
+      "kind": "strainmeter_sensor",
+      "purpose": "Shallow coupled strainmeter",
+      "material_id": 7,
+      "surface_marker": 12,
+      "tag_shape": "sphere",
+      "center_xyz_m": [
+        5160.0,
+        5185.0,
+        -30.0
+      ],
+      "tag_radius_m": 0.25,
+      "source_sensor_id": "AVN2",
+      "local_point_stats": {
+        "surface_points": 42,
+        "surface_facets": 80,
+        "surface_rings": 0,
+        "refinement_points": 530,
+        "attempted": 546,
+        "accepted": 530,
+        "rejected_domain": 16,
+        "rejected_spacing": 0,
+        "points_added": 572
+      },
+      "surface_topology": {
+        "facets": 80,
+        "edges": 120,
+        "bad_edges": 0
+      },
+      "geodesic_shell_radii_m": [
+        0.4,
+        0.6,
+        0.9,
+        1.35,
+        2.0,
+        3.0,
+        4.5,
+        6.7,
+        10.0,
+        15.0,
+        22.0,
+        32.0,
+        46.0
+      ]
+    },
+    {
+      "name": "AVN87",
+      "kind": "strainmeter_sensor",
+      "purpose": "Shallow coupled strainmeter",
+      "material_id": 8,
+      "surface_marker": 13,
+      "tag_shape": "sphere",
+      "center_xyz_m": [
+        5460.0,
+        5185.0,
+        -30.0
+      ],
+      "tag_radius_m": 0.25,
+      "source_sensor_id": "AVN87",
+      "local_point_stats": {
+        "surface_points": 42,
+        "surface_facets": 80,
+        "surface_rings": 0,
+        "refinement_points": 532,
+        "attempted": 546,
+        "accepted": 532,
+        "rejected_domain": 14,
+        "rejected_spacing": 0,
+        "points_added": 574
+      },
+      "surface_topology": {
+        "facets": 80,
+        "edges": 120,
+        "bad_edges": 0
+      },
+      "geodesic_shell_radii_m": [
+        0.4,
+        0.6,
+        0.9,
+        1.35,
+        2.0,
+        3.0,
+        4.5,
+        6.7,
+        10.0,
+        15.0,
+        22.0,
+        32.0,
+        46.0
+      ]
+    },
+    {
+      "name": "AVN31",
+      "kind": "strainmeter_sensor",
+      "purpose": "Deep strainmeter near HEC",
+      "material_id": 9,
+      "surface_marker": 14,
+      "tag_shape": "sphere",
+      "center_xyz_m": [
+        5350.0,
+        4720.0,
+        -520.0
+      ],
+      "tag_radius_m": 0.25,
+      "source_sensor_id": "AVN31",
+      "local_point_stats": {
+        "surface_points": 42,
+        "surface_facets": 80,
+        "surface_rings": 0,
+        "refinement_points": 534,
+        "attempted": 546,
+        "accepted": 534,
+        "rejected_domain": 10,
+        "rejected_spacing": 2,
+        "points_added": 576
+      },
+      "surface_topology": {
+        "facets": 80,
+        "edges": 120,
+        "bad_edges": 0
+      },
+      "geodesic_shell_radii_m": [
+        0.4,
+        0.6,
+        0.9,
+        1.35,
+        2.0,
+        3.0,
+        4.5,
+        6.7,
+        10.0,
+        15.0,
+        22.0,
+        32.0,
+        46.0
+      ]
+    }
+  ],
+  "boundary_markers": {
+    "top": 1,
+    "bottom": 2,
+    "north": 3,
+    "south": 4,
+    "east": 5,
+    "west": 6
+  }
+}

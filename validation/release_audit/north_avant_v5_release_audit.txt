@@ -1,0 +1,76 @@
+NORTH AVANT V5 RELEASE AUDIT
+====================================================================================================
+Repository: /home/kwesi/yaomesh/Pflotran_files_codes_nav5_release
+Runtime bundle: /home/kwesi/yaomesh/Pflotran_files_codes_nav5_release
+
+PASS  release pipeline files
+      12 required files present
+PASS  V5 mesh source files
+      7 required files present
+PASS  validation source files
+      4 required files present
+PASS  deck:north_avant_v5_twoway_preproduction_4h.in
+      two-way, STEP schedule, FINAL_TIME 4.d0 hour, V5 paths, outputs, checkpoints
+PASS  deck:north_avant_v5_twoway_production_96h_final.in
+      two-way, STEP schedule, FINAL_TIME 96.d0 hour, V5 paths, outputs, checkpoints
+PASS  shell syntax:run_north_avant_v5_simulation.slurm
+      bash -n passed
+PASS  shell syntax:postprocess_north_avant_v5_results.slurm
+      bash -n passed
+PASS  shell syntax:submit_north_avant_v5_pipeline.sh
+      bash -n passed
+PASS  python syntax:pflotran_coupled_to_vtu.py
+      syntax compiled
+PASS  python syntax:pflotran_region_timeseries_plots.py
+      syntax compiled
+PASS  python syntax:preflight_north_avant_v5_bundle.py
+      syntax compiled
+PASS  python syntax:build_poly_layers4.py
+      syntax compiled
+PASS  python syntax:layers4_get_material_boundary_tags.py
+      syntax compiled
+PASS  python syntax:tetgen_quality_report_localized.py
+      syntax compiled
+PASS  python syntax:tetgen_to_avs_ugi_canonical.py
+      syntax compiled
+PASS  python syntax:material_h5_from_txt.py
+      syntax compiled
+PASS  python syntax:validate_uge_and_write_mapping.py
+      syntax compiled
+PASS  python syntax:build_boundary_ex.py
+      syntax compiled
+PASS  python syntax:compare_oneway_twoway.py
+      syntax compiled
+PASS  python syntax:compare_continuous_restart.py
+      syntax compiled
+PASS  python syntax:restart_acceptance_gate.py
+      syntax compiled
+PASS  python syntax:audit_xmf_h5_v2.py
+      syntax compiled
+PASS  runtime manifest contents
+      exact authoritative 27-file manifest
+PASS  runtime bundle files
+      all 27 files present in /home/kwesi/yaomesh/Pflotran_files_codes_nav5_release
+PASS  runtime topology counts
+      cells=140456, connections=959340, vertices=140456, tets=802245, identity mapping
+PASS  material HDF5
+      140456 rows; material IDs 1..10
+PASS  vset validation
+      overburden.vset:43418; shallow_limestone.vset:7322; bartlesville_sand.vset:29992; basal_layer.vset:14569; underburden.vset:44473; hec.vset:472; injection_borehole.vset:84; strainmeter_sensors.vset:126; AVN2.vset:42; AVN87.vset:42; AVN31.vset:42; top.vset:6561; bottom.vset:6561; north.vset:1053; south.vset:1053; east.vset:1053; west.vset:1053
+PASS  boundary EX validation
+      boundary_ex_v5/top.ex:6561,A=1.000000e+08; boundary_ex_v5/bottom.ex:6561,A=1.000000e+08; boundary_ex_v5/north.ex:1053,A=1.535000e+07; boundary_ex_v5/south.ex:1053,A=1.535000e+07; boundary_ex_v5/east.ex:1053,A=1.535000e+07; boundary_ex_v5/west.ex:1053,A=1.535000e+07
+PASS  ambiguous or superseded files
+      none at repository root
+PASS  generated/legacy artifacts still in root
+      none detected
+WARN  git working tree
+      171 changed/untracked paths
+PASS  large tracked files
+      none >= 50 MiB
+PASS  tracked generated artifacts
+      none detected
+
+====================================================================================================
+Hard failures: 0
+Warnings:      1
+Result:        PASS

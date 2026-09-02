@@ -1,0 +1,76 @@
+
+
+# BEGIN NORTH AVANT V5 RELEASE
+
+# Local Python environments and caches
+.venv*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Raw PFLOTRAN outputs and checkpoints
+*.out
+*.err
+*.log
+*.xmf
+*.chk
+*-restart*
+
+# Generated visualization and analysis outputs
+*.vtu
+*.pvd
+*.vtp
+*.pvtp
+paraview_*/
+region_timeseries_*/
+quality_*/
+quality_limestone_*/
+compare_*_v5/
+
+# Generated mesh products
+*.node
+*.ele
+*.face
+*.edge
+*.neigh
+*.poly
+*.inp
+*.trn
+*.uge
+*.ugi
+*.mapping
+*.h5
+
+# Obsolete root-level EX products
+/*.ex
+
+# Intermediate/failed mesh families
+bartlesville_hec_lime_v2*
+bartlesville_hec_lime_v3*
+bartlesville_hec_lime_v4*
+*UNVALIDATED*
+
+# Old smoke and restart runs
+north_avant_v5_flow_smoke*
+north_avant_v5_oneway_*smoke*
+north_avant_v5_twoway_injection_smoke*
+north_avant_v5_twoway_restart_stage*
+
+# Release-construction archives
+north_avant_v5_production_pipeline*.tar.gz*
+north_avant_v5_release_prep_tools*.tar.gz*
+
+# Authoritative V5 runtime exceptions
+!/bartlesville_hec_lime_v5_interfaces_median.uge
+!/bartlesville_hec_lime_v5_interfaces.ugi
+!/bartlesville_hec_lime_v5_interfaces_median.mapping
+!/bartlesville_hec_lime_v5_interfaces_material_ids.h5
+
+# Temporary files
+*~
+*.swp
+.DS_Store
+Thumbs.db
+
+# END NORTH AVANT V5 RELEASE

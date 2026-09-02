@@ -1,0 +1,64 @@
+# North Avant V5 local environments and caches
+.venv*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Raw PFLOTRAN output and restart products
+*.h5
+*.xmf
+*.chk
+*-restart*
+*.out
+*.err
+slurm-*.out
+slurm-*.err
+NAV5-*.out
+NAV5-*.err
+
+# Generated mesh/runtime binaries: transfer as a frozen bundle or with Git LFS
+*.uge
+*.ugi
+*.mapping
+*.node
+*.ele
+*.face
+*.edge
+*.neigh
+*.poly
+*.inp
+*.trn
+*.vtp
+*.pvtp
+*.vtu
+*.pvd
+
+# Derived logs and visualization/result directories
+*.log
+paraview_*/
+region_timeseries_*/
+compare_*_v5/
+quality_*/
+quality_limestone_*/
+validation/**/raw/
+validation/**/*.h5
+validation/**/*.xmf
+validation/**/*.vtu
+validation/**/*.pvd
+
+# Frozen runtime bundle is transferred separately to Palmetto
+north_avant_v5_palmetto_bundle/
+north_avant_v5_palmetto_bundle.tar.gz
+north_avant_v5_palmetto_bundle.tar.gz.sha256
+
+# External/local archives
+archive/
+*_archive/
+Pflotran_files_codes_archive/
+
+# Temporary editor and OS files
+*~
+*.swp
+.DS_Store
+Thumbs.db

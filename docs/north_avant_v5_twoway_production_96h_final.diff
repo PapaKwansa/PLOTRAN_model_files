@@ -1,0 +1,109 @@
+--- north_avant_v5_twoway_production_96h.in
++++ north_avant_v5_twoway_production_96h_final.in
+@@ -1,5 +1,5 @@
+ # ============================================================
+-# NORTH AVANT V5: 96-HOUR TWO-WAY-COUPLED PRODUCTION CANDIDATE
++# NORTH AVANT V5: 96-HOUR TWO-WAY-COUPLED PRODUCTION DECK
+ #
+ # Physical timeline
+ # -----------------
+@@ -17,22 +17,30 @@
+ # This deck preserves the material properties and mechanical boundary
+ # conditions used in the successful V5 smoke, two-way, and restart tests.
+ #
+-# IMPORTANT PHYSICAL CHOICE
+-# -------------------------
+-# RATE LIST uses INTERPOLATION LINEAR because that is the smooth schedule
+-# exercised by the successful smoke tests. If the field record represents
+-# piecewise-constant rate stages, change exactly that line to:
++# INJECTION-HISTORY INTERPRETATION
++# --------------------------------
++# The original 96-hour deck omitted INTERPOLATION, for which PFLOTRAN uses
++# STEP interpolation by default. This deck writes INTERPOLATION STEP
++# explicitly so the old physical schedule is preserved:
+ #
+-#     INTERPOLATION STEP
++#   0.0 to 0.5 h   : 0.0 m^3/s
++#   0.5 to 3.0 h   : 1.0e-3 m^3/s
++#   3.0 to 19.0 h  : 1.9e-3 m^3/s
++#   19.0 to 96.0 h : 0.0 m^3/s (shut-in/recovery)
+ #
+-# before production, and repeat a short preproduction test.
++# Change STEP to LINEAR only if the four tabulated values are known to be
++# continuous rate-history waypoints rather than operating stages.
+ # ============================================================
+
+ SIMULATION
+   SIMULATION_TYPE SUBSURFACE
++  # Writes the fully parsed/internalized input to <prefix>.rec.
++  INPUT_RECORD_FILE
+
+   PROCESS_MODELS
+     SUBSURFACE_FLOW flow
++      # Single-water-phase, isothermal flow. The hydrostatic initial state is
++      # fully saturated; retaining RICHARDS preserves the validated workflow.
+       MODE RICHARDS
+     /
+     SUBSURFACE_GEOMECHANICS geomech
+@@ -226,7 +234,9 @@
+ OUTPUT
+   ACKNOWLEDGE_VTK_FLAW
+   SCREEN PERIODIC 20
++  TIME_UNITS hour
+   SNAPSHOT_FILE
++    EXTEND_HDF5_TIME_FORMAT
+     TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 5.d-1 1.d0 2.d0 3.d0 6.d0 9.d0 12.d0 15.d0 17.d0 18.d0 18.5d0 18.9d0 18.95d0 19.d0 19.01d0 19.02d0 19.05d0 19.1d0 19.25d0 19.5d0 20.d0 22.d0 24.d0 36.d0 48.d0 72.d0 96.d0
+     FORMAT HDF5
+     VARIABLES
+@@ -238,6 +248,10 @@
+       PERMEABILITY_Z
+     /
+   /
++  # Compact global water-balance record for production QA.
++  CONSERVATION_FILE
++    PERIODIC TIME 5.d-1 hour
++  /
+ END
+
+ # -----------------------------------------------------------------------------
+@@ -303,9 +317,8 @@
+ END
+
+ # Field injection/recovery schedule.
+-# LINEAR is explicit and matches the successful V5 smoke-test convention.
+-# Change to STEP only when the field rate record is intended to represent
+-# piecewise-constant stages, then repeat the 3-hour preproduction test.
++# STEP is explicit and preserves the behavior of the old 96-hour input deck.
++# SYNC_TIMESTEP_WITH_UPDATE forces a timestep boundary at 0.5, 3, and 19 h.
+ FLOW_CONDITION injection
+   TYPE
+     RATE SCALED_VOLUMETRIC_RATE VOLUME
+@@ -314,7 +327,7 @@
+   RATE LIST
+     TIME_UNITS hour
+     DATA_UNITS m^3/s
+-    INTERPOLATION LINEAR
++    INTERPOLATION STEP
+     0.d0     0.d0
+     0.5d0   1.d-3
+     3.d0    1.9d-3
+@@ -371,6 +384,9 @@
+
+   GEOMECHANICS_GRID
+     TYPE UNSTRUCTURED bartlesville_hec_lime_v5_interfaces.ugi
++    # Zero mechanics gravity makes displacement/strain incremental with
++    # respect to the initial hydrostatic state. It intentionally omits
++    # lithostatic self-weight from this pressure-induced deformation run.
+     GRAVITY 0.d0 0.d0 0.d0
+   END
+
+@@ -620,7 +636,8 @@
+     GEOMECHANICS_REGION bottom
+   END
+
+-  # The top surface remains mechanically free.
++  # Side rollers suppress rigid-body horizontal motion, the bottom is fixed
++  # vertically, and the top surface remains traction-free.
+   # Explicit times keep flow and geomechanics visualization products aligned.
+   GEOMECHANICS_OUTPUT
+     TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 5.d-1 1.d0 2.d0 3.d0 6.d0 9.d0 12.d0 15.d0 17.d0 18.d0 18.5d0 18.9d0 18.95d0 19.d0 19.01d0 19.02d0 19.05d0 19.1d0 19.25d0 19.5d0 20.d0 22.d0 24.d0 36.d0 48.d0 72.d0 96.d0

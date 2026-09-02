@@ -8,10 +8,16 @@ The vertical coordinate is elevation relative to the model top:
     top face    z =    0 m
     bottom face z = -1535 m
 
-The shallow geometry has been extended downward so only the
-underburden is thicker.  The HEC centre is at z=-527.5 m, its top is at z=-525.0 m, and its
-bottom is at z=-530.0 m.  The shallow strainmeters are at z=-30 m, and
-AVN31 is at z=-520 m.
+The shallow geometry contains a provisional representative limestone layer
+from z=-35 m to z=-25 m, centered on AVN2 and AVN87 at z=-30 m.  The physical
+domain, HEC, injection-well, and strainmeter-pod geometry are retained.  This
+revision retains the bounded HEC halos and adds conforming local refinement
+of the constrained z=-530 m and z=-535 m geological-interface facets.  The
+interface triangulation is made commensurate with the 20/40/80 m HEC volume
+point spacing, removing the dense-volume-to-coarse-surface mismatch identified
+by the localized quality audit.
+The HEC centre is at z=-527.5 m, its top is at z=-525.0 m, and its bottom
+is at z=-530.0 m.  AVN31 is at z=-520 m.
 
 Local-mesh strategy
 -------------------
@@ -27,13 +33,18 @@ This revision uses a body-fitted, smoothly graded point layout:
   radial, tangential, and axial spacings increase together;
 * strainmeters are closed subdivided-icosahedron PLCs, avoiding polar triangles;
 * surrounding strainmeter refinement uses rotated geodesic shells with a
-  nearly constant radial-to-tangential size ratio;
+  nearly constant radial-to-tangential size ratio; free shell points that lie on, or within a small numerical clearance of,
+  constrained geological interfaces are omitted;
 * no centerline point chain and no radial center spokes are inserted;
+* the Bartlesville/basal and basal/underburden interfaces are locally
+  retriangulated with embedded HEC-aligned points, so dense volume points no
+  longer terminate against a coarse 125 m interface mesh;
 * TetGen quality refinement is disabled by default in this safer version,
   because the thin 5 m layers and the tiny well/sensor PLCs can make
   global `-q` refinement fail before the mesh is usable.
   The script instead adds denser local points near the HEC and injection
-  well, and keeps the quality switch opt-in for later tests.
+  well.  V4 uses 20 m, 40 m, and 80 m HEC-aligned grading zones before the
+  125 m regional matrix, and keeps the quality switch opt-in for diagnostics.
 
 The HEC remains tag-only and is described in the JSON sidecar.  Geological
 material interfaces are explicit horizontal PLC facets.  Other vertical
@@ -58,6 +69,15 @@ from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+try:
+    from scipy.spatial import Delaunay, QhullError
+except ImportError as exc:  # pragma: no cover - checked explicitly at runtime
+    Delaunay = None  # type: ignore[assignment]
+    QhullError = RuntimeError  # type: ignore[assignment,misc]
+    _SCIPY_IMPORT_ERROR = exc
+else:
+    _SCIPY_IMPORT_ERROR = None
+
 # =============================================================================
 # Domain and material geometry: top z=0, bottom z=-1535.
 # =============================================================================
@@ -75,11 +95,20 @@ class GeologicalLayer:
     z_max: float
 
 
-LAYERS: Tuple[GeologicalLayer, ...] = (
-    # Layer numbering matches the PFLOTRAN material convention used downstream:
-    # 1 = overburden, 2 = Bartlesville sandstone, 3 = basal layer, 4 = underburden.
+# Provisional representative host layer for the two shallow strainmeters.
+# Material IDs 1--9 are preserved; limestone therefore uses ID 10.
+# Update only these elevations when a field/borehole log provides exact picks.
+SHALLOW_LIMESTONE_MATERIAL_ID = 10
+SHALLOW_LIMESTONE_BOTTOM_Z_M = -35.0
+SHALLOW_LIMESTONE_TOP_Z_M = -25.0
 
-    GeologicalLayer(1, 1, "overburden", -500.0, 0.0),
+LAYERS: Tuple[GeologicalLayer, ...] = (
+    # Geological layer numbers are unique.  Material ID 1 is intentionally
+    # reused above and below the limestone because both intervals retain the
+    # existing overburden properties.
+    GeologicalLayer(6, 1, "upper_overburden", SHALLOW_LIMESTONE_TOP_Z_M, 0.0),
+    GeologicalLayer(5, SHALLOW_LIMESTONE_MATERIAL_ID, "shallow_limestone", SHALLOW_LIMESTONE_BOTTOM_Z_M, SHALLOW_LIMESTONE_TOP_Z_M),
+    GeologicalLayer(1, 1, "lower_overburden", -500.0, SHALLOW_LIMESTONE_BOTTOM_Z_M),
     GeologicalLayer(2, 2, "bartlesville_sand", -530.0, -500.0),
     GeologicalLayer(3, 3, "basal_layer", -535.0, -530.0),
     GeologicalLayer(4, 4, "underburden", -1535.0, -535.0),
@@ -133,8 +162,10 @@ VERTICAL_BANDS: Tuple[VerticalBand, ...] = (
     VerticalBand("BARTLESVILLE_upper_refined", -525.0, -500.0, 2, "Bartlesville sandstone above the HEC"),
     VerticalBand("OVERBURDEN_lower_transition", -500.0, -400.0, 1, "lower overburden"),
     VerticalBand("OVERBURDEN_transition_1", -400.0, -250.0, 1, "middle overburden"),
-    VerticalBand("OVERBURDEN_transition_2", -250.0, -100.0, 1, "upper overburden"),
-    VerticalBand("OVERBURDEN_top_transition", -100.0, 0.0, 1, "largest cells near the top boundary"),
+    VerticalBand("OVERBURDEN_transition_2", -250.0, -100.0, 1, "upper part of lower overburden"),
+    VerticalBand("LOWER_OVERBURDEN_limestone_approach", -100.0, SHALLOW_LIMESTONE_BOTTOM_Z_M, 1, "approaches shallow limestone"),
+    VerticalBand("SHALLOW_LIMESTONE", SHALLOW_LIMESTONE_BOTTOM_Z_M, SHALLOW_LIMESTONE_TOP_Z_M, 5, "representative AVN2/AVN87 host limestone"),
+    VerticalBand("UPPER_OVERBURDEN", SHALLOW_LIMESTONE_TOP_Z_M, 0.0, 6, "overburden above shallow limestone"),
 )
 Z_LEVELS: Tuple[float, ...] = tuple(
     [VERTICAL_BANDS[0].z_min] + [band.z_max for band in VERTICAL_BANDS]
@@ -142,30 +173,128 @@ Z_LEVELS: Tuple[float, ...] = tuple(
 
 # Only true material interfaces and external faces are constrained horizontal
 # PLC planes.  The other z levels remain free refinement-point planes.
-HORIZONTAL_PLC_LEVELS_M = frozenset({-1535.0, -535.0, -530.0, -500.0, 0.0})
+HORIZONTAL_PLC_LEVELS_M = frozenset({
+    -1535.0, -535.0, -530.0, -500.0,
+    SHALLOW_LIMESTONE_BOTTOM_Z_M, SHALLOW_LIMESTONE_TOP_Z_M,
+    0.0,
+})
 
 # =============================================================================
-# TEST 5: local vertical refinement around the HEC.
-# The global Z levels stay at the proven Test 2 configuration.  These are
-# free Part-1 points only, confined to a local HEC-centered halo, so we add
-# vertical grading without replicating a new X/Y lattice over the full 10 km
-# domain.  No geological interface or target tag is changed.
+# Nested HEC-local volumetric grading.
+#
+# The localized V3 quality audit placed more than 90% of critical tetrahedra in
+# the HEC near field or at the edge of the former single 20 m point cloud.  The
+# physical HEC remains unchanged.  Only free Part-1 points are added here.
+# Three HEC-aligned rectangular annuli now bridge the local and regional sizes:
+#
+#     20 m core -> 40 m inner transition -> 80 m outer transition -> 125 m bulk
+#
+# Zone-specific vertical levels also smooth the top and bottom of the local
+# cloud.  None of these levels is a material interface or PLC facet.
 # =============================================================================
-HEC_LOCAL_X_HALF_M = 450.0
-HEC_LOCAL_Y_HALF_M = 450.0
-HEC_LOCAL_XY_SPACING_M = 40.0
-HEC_LOCAL_VERTICAL_LEVELS_M: Tuple[float, ...] = (
-    -625.0,
-    -600.0,
-    -575.0,
-    -550.0,
-    -540.0,
-    -532.5,
-    -527.5,
-    -522.5,
-    -515.0,
+@dataclass(frozen=True)
+class HecRefinementZone:
+    name: str
+    x_half_extent_m: float
+    y_half_extent_m: float
+    xy_spacing_m: float
+    inner_x_half_extent_m: float
+    inner_y_half_extent_m: float
+    vertical_levels_m: Tuple[float, ...]
+    phase_u: float
+    phase_v: float
+
+
+HEC_REFINEMENT_ZONES: Tuple[HecRefinementZone, ...] = (
+    HecRefinementZone(
+        name="core_20m",
+        x_half_extent_m=500.0,
+        y_half_extent_m=500.0,
+        xy_spacing_m=20.0,
+        inner_x_half_extent_m=0.0,
+        inner_y_half_extent_m=0.0,
+        vertical_levels_m=(
+            -625.0, -600.0, -575.0, -550.0, -540.0,
+            -532.5, -527.5, -522.5, -515.0,
+        ),
+        phase_u=0.17,
+        phase_v=0.41,
+    ),
+    HecRefinementZone(
+        name="inner_transition_40m",
+        x_half_extent_m=850.0,
+        y_half_extent_m=850.0,
+        xy_spacing_m=40.0,
+        inner_x_half_extent_m=500.0,
+        inner_y_half_extent_m=500.0,
+        vertical_levels_m=(
+            -700.0, -650.0, -625.0, -600.0, -575.0,
+            -550.0, -540.0, -532.5, -527.5, -522.5,
+            -515.0, -505.0, -490.0, -450.0,
+        ),
+        phase_u=0.31,
+        phase_v=0.67,
+    ),
+    HecRefinementZone(
+        name="outer_transition_80m",
+        x_half_extent_m=1350.0,
+        y_half_extent_m=1350.0,
+        xy_spacing_m=80.0,
+        inner_x_half_extent_m=850.0,
+        inner_y_half_extent_m=850.0,
+        vertical_levels_m=(
+            -900.0, -800.0, -700.0, -625.0, -575.0,
+            -550.0, -527.5, -505.0, -475.0, -425.0,
+        ),
+        phase_u=0.53,
+        phase_v=0.23,
+    ),
 )
-HEC_LOCAL_STAGGER_M = 20.0
+
+# Backward-compatible aliases retained for downstream reports that expect one
+# core HEC spacing.  They describe only the innermost refinement zone.
+HEC_LOCAL_X_HALF_M = HEC_REFINEMENT_ZONES[0].x_half_extent_m
+HEC_LOCAL_Y_HALF_M = HEC_REFINEMENT_ZONES[0].y_half_extent_m
+HEC_LOCAL_XY_SPACING_M = HEC_REFINEMENT_ZONES[0].xy_spacing_m
+HEC_LOCAL_VERTICAL_LEVELS_M = HEC_REFINEMENT_ZONES[0].vertical_levels_m
+HEC_LOCAL_STAGGER_M = 0.5 * HEC_LOCAL_XY_SPACING_M
+
+
+# =============================================================================
+# Conforming local refinement of the two thin-layer geological interfaces.
+#
+# V3/V4 diagnostics showed that the 20 m HEC volume cloud terminated against
+# the 125 m triangulation of z=-530 m and z=-535 m.  That surface/volume size
+# mismatch created most of the very large radius-edge ratios and the repeated
+# ~0.0165 degree minimum-dihedral tetrahedra.  These specifications refine only
+# the triangulation of the already-existing horizontal interfaces; no physical
+# layer depth, HEC dimension, well geometry, or pod geometry is changed.
+# =============================================================================
+@dataclass(frozen=True)
+class HecInterfaceRefinementSpec:
+    name: str
+    z_m: float
+    zone_names: Tuple[str, ...]
+
+
+HEC_INTERFACE_REFINEMENT_SPECS: Tuple[HecInterfaceRefinementSpec, ...] = (
+    HecInterfaceRefinementSpec(
+        name="bartlesville_basal_interface",
+        z_m=-530.0,
+        zone_names=("core_20m", "inner_transition_40m", "outer_transition_80m"),
+    ),
+    HecInterfaceRefinementSpec(
+        name="basal_underburden_interface",
+        z_m=-535.0,
+        zone_names=("core_20m", "inner_transition_40m", "outer_transition_80m"),
+    ),
+)
+
+# Candidate interface points closer than this distance to a pre-existing coarse
+# triangle edge are omitted.  This lets every coarse triangle be retriangulated
+# independently while preserving all original shared edges exactly.
+HEC_INTERFACE_EDGE_CLEARANCE_M = 0.75
+HEC_INTERFACE_AREA_TOLERANCE_M2 = 1.0e-8
 
 
 BOUNDARY_MARKERS: Dict[str, int] = {
@@ -237,44 +366,44 @@ class TubeShell:
 # This is an O-grid-like point layout around the complete injection well.
 INJECTION_TUBE_SHELLS: Tuple[TubeShell, ...] = (
     # radius, maximum axial spacing, points/ring, end padding
-    # The innermost rings are denser so the 0.75 m well expands more smoothly
-    # into the Bartlesville/HEC neighborhood before it reaches the coarser matrix.
-    TubeShell(0.90, 0.60, 8, 0.80),
-    TubeShell(1.15, 0.75, 8, 1.00),
-    TubeShell(1.45, 0.90, 8, 1.20),
-    TubeShell(1.85, 1.10, 8, 1.50),
-    TubeShell(2.35, 1.35, 10, 1.80),
-    TubeShell(3.00, 1.70, 10, 2.20),
-    TubeShell(3.80, 2.20, 10, 2.70),
-    TubeShell(4.80, 2.80, 12, 3.30),
-    TubeShell(6.00, 3.50, 12, 4.00),
-    TubeShell(7.60, 4.40, 12, 5.00),
-    TubeShell(9.50, 5.40, 12, 6.00),
-    TubeShell(12.0, 6.80, 12, 7.50),
-    TubeShell(15.0, 8.50, 12, 9.00),
-    TubeShell(19.0, 10.5, 12, 11.0),
-    TubeShell(24.0, 13.0, 12, 13.5),
-    TubeShell(30.0, 16.0, 12, 16.0),
+    # The physical 0.75 m well is unchanged.  The former first free shell was
+    # only 0.15 m outside the PLC and promoted very small radial edges next to
+    # much larger matrix edges.  The revised shells preserve the coaxial/O-grid
+    # concept while growing radial, tangential, and axial scales together.
+    TubeShell(1.25, 0.65, 8, 0.80),
+    TubeShell(1.80, 0.85, 8, 1.00),
+    TubeShell(2.55, 1.10, 10, 1.30),
+    TubeShell(3.60, 1.45, 10, 1.80),
+    TubeShell(5.00, 1.90, 12, 2.40),
+    TubeShell(7.00, 2.50, 12, 3.20),
+    TubeShell(9.80, 3.40, 12, 4.20),
+    TubeShell(13.70, 4.60, 14, 5.60),
+    TubeShell(19.20, 6.20, 16, 7.50),
+    TubeShell(27.00, 8.50, 18, 10.00),
+    TubeShell(38.00, 12.00, 20, 14.00),
+    TubeShell(54.00, 17.00, 24, 20.00),
 )
 
 # Rotated geodesic shells around point-like strainmeters.  The geometric
 # progression keeps radial spacing comparable to surface edge length.
 STRAINMETER_SHELL_RADII_M: Tuple[float, ...] = (
-    0.30,
-    0.45,
-    0.65,
+    # The physical 0.25 m pod and its icosphere surface are unchanged.  The
+    # first free shell now leaves a 0.15 m gap rather than 0.05 m, and the
+    # remaining radii grow geometrically so adjacent tetrahedra see a smoother
+    # size transition.
+    0.40,
+    0.60,
     0.90,
-    1.25,
-    1.75,
-    2.40,
-    3.25,
-    4.35,
-    5.80,
-    7.70,
+    1.35,
+    2.00,
+    3.00,
+    4.50,
+    6.70,
     10.0,
-    13.0,
-    16.5,
-    21.0,
+    15.0,
+    22.0,
+    32.0,
+    46.0,
 )
 STRAINMETER_REFINEMENT_SUBDIVISIONS = 1
 
@@ -287,13 +416,27 @@ STRAINMETER_ROTATIONS_DEG: Dict[str, Tuple[float, float, float]] = {
 
 # Near-coincident free points can create nearly zero-volume tetrahedra.
 POINT_HASH_BIN_SIZE_M = 0.75
-MIN_POINT_SEPARATION_FACTOR = 0.25
+MIN_POINT_SEPARATION_FACTOR = 0.40
 DOMAIN_FREE_POINT_CLEARANCE_M = 0.10
+
+# Free refinement points must not lie on constrained geological-interface
+# triangles unless they are explicitly part of that interface triangulation.
+# This matters for the shallow limestone: the 10 m geodesic shell around
+# AVN2 can otherwise place vertices exactly at z=-25 m and z=-35 m, which
+# TetGen reports as "A vertex lies on a facet" and then skips intersecting
+# triangles.  The clearance scales with the local point spacing so it also
+# suppresses exact and very-near coplanar conflicts without changing any physical PLC.
+# Keep unrelated free shell points a practical distance from constrained
+# interfaces.  The V3/V4 worst cells used well-shell rings only 0.036--0.063 m
+# from z=-530 m; those nearly coplanar points created the repeated 0.01654 deg
+# tetrahedra.  HEC volume planes at +/-2.5 m remain untouched.
+HORIZONTAL_PLC_FREE_POINT_CLEARANCE_FACTOR = 0.02
+HORIZONTAL_PLC_FREE_POINT_CLEARANCE_MIN_M = 0.35
 
 # Keep TetGen quality refinement opt-in.  Dense local points are safer than
 # forcing global -q on the first pass through this geometry.
 ENABLE_TETGEN_QUALITY = False
-QUALITY_SWITCH = "1.5"
+QUALITY_SWITCH = "20.0/1.0"
 
 # IMPORTANT: do not enable TetGen -q by default for this geometry.  The
 # quality-refinement pass acts on the entire 10-km domain and all geological
@@ -304,8 +447,8 @@ QUALITY_SWITCH = "1.5"
 # Delaunay tetrahedralisation only.  This normally keeps the output well below
 # the workflow's 900,000-tetrahedron guard.
 DEFAULT_TETGEN_FLAGS = "-pnAef"
-MAX_RECOMMENDED_INPUT_POINTS = 120_000
-MAX_RECOMMENDED_INPUT_FACETS = 120_000
+MAX_RECOMMENDED_INPUT_POINTS = 160_000
+MAX_RECOMMENDED_INPUT_FACETS = 190_000
 
 # =============================================================================
 # Data structures.
@@ -498,28 +641,27 @@ def unique_sorted(values: Iterable[float]) -> np.ndarray:
 
 
 def make_x_axis() -> np.ndarray:
-    """Build X coordinates with a small, targeted transition smoothing band."""
-    values: List[float] = []
-    values += inclusive_values(0.0, 4000.0, MATRIX_COARSE_STEP_M)
-    values += [4200.0, 4400.0, 4600.0, 4650.0, 4700.0, 4750.0]
-    values += inclusive_values(X_FINE_START, X_FINE_END, ROTATED_TAG_LATTICE_STEP_M)
-    values += [5250.0, 5300.0, 5350.0, 5400.0, 5600.0, 5800.0, 6000.0]
-    values += inclusive_values(6500.0, 10000.0, MATRIX_COARSE_STEP_M)
-    axis = unique_sorted(values)
+    """Build the regional X axis without a domain-wide fine strip.
+
+    The former tensor-product axis inserted every fine HEC x coordinate at all
+    y values, producing a 10-km-long refinement band.  HEC resolution is now
+    supplied by the existing bounded, rotated 3-D point cloud instead.
+    """
+    axis = np.asarray(
+        inclusive_values(0.0, 10000.0, MATRIX_COARSE_STEP_M),
+        dtype=float,
+    )
     if axis[0] != 0.0 or axis[-1] != 10000.0 or not np.all(np.diff(axis) > 0.0):
         raise ValueError("Invalid x axis.")
     return axis
 
 
 def make_y_axis() -> np.ndarray:
-    """Build Y coordinates with a small, targeted transition smoothing band."""
-    values: List[float] = []
-    values += inclusive_values(0.0, 4000.0, MATRIX_COARSE_STEP_M)
-    values += [4200.0, 4400.0, 4500.0, 4580.0, 4660.0]
-    values += inclusive_values(Y_FINE_START, Y_FINE_END, ROTATED_TAG_LATTICE_STEP_M)
-    values += [5340.0, 5420.0, 5500.0, 5600.0, 5800.0, 6000.0]
-    values += inclusive_values(6500.0, 10000.0, MATRIX_COARSE_STEP_M)
-    axis = unique_sorted(values)
+    """Build the regional Y axis without a domain-wide fine strip."""
+    axis = np.asarray(
+        inclusive_values(0.0, 10000.0, MATRIX_COARSE_STEP_M),
+        dtype=float,
+    )
     if axis[0] != 0.0 or axis[-1] != 10000.0 or not np.all(np.diff(axis) > 0.0):
         raise ValueError("Invalid y axis.")
     return axis
@@ -590,6 +732,25 @@ def rotation_matrix_xyz(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np
 # =============================================================================
 def validate_configuration() -> None:
     tolerance = 1.0e-9
+    if Delaunay is None:
+        raise RuntimeError(
+            "SciPy is required for the local conforming interface triangulation. "
+            "Install scipy for this Python interpreter before running V5."
+        ) from _SCIPY_IMPORT_ERROR
+
+    zone_names = {zone.name for zone in HEC_REFINEMENT_ZONES}
+    for spec in HEC_INTERFACE_REFINEMENT_SPECS:
+        if spec.z_m not in HORIZONTAL_PLC_LEVELS_M:
+            raise ValueError(
+                f"Interface-refinement plane {spec.name} at z={spec.z_m:g} m "
+                "is not a constrained horizontal PLC level."
+            )
+        missing_zone_names = sorted(set(spec.zone_names) - zone_names)
+        if missing_zone_names:
+            raise ValueError(
+                f"Interface-refinement specification {spec.name} references "
+                f"unknown HEC zone(s): {missing_zone_names}."
+            )
     if not np.allclose(DOMAIN_MIN, [0.0, 0.0, -1535.0]):
         raise ValueError("Domain bottom must be z=-1535 m.")
     if not np.allclose(DOMAIN_MAX, [10000.0, 10000.0, 0.0]):
@@ -610,6 +771,24 @@ def validate_configuration() -> None:
         raise ValueError("Injection cylinder must be strictly inside the z boundaries.")
     if INJECTION_RADIUS_M <= 0.0 or STRAINMETER_RADIUS_M <= 0.0:
         raise ValueError("Target radii must be positive.")
+
+    if not (
+        DOMAIN_MIN[2]
+        < SHALLOW_LIMESTONE_BOTTOM_Z_M
+        < SHALLOW_LIMESTONE_TOP_Z_M
+        < DOMAIN_MAX[2]
+    ):
+        raise ValueError("Representative limestone elevations are outside the domain or reversed.")
+
+    for sensor in STRAINMETER_INPUTS:
+        if sensor.sensor_id in {"AVN2", "AVN87"}:
+            if not (
+                sensor.z_m - STRAINMETER_RADIUS_M > SHALLOW_LIMESTONE_BOTTOM_Z_M
+                and sensor.z_m + STRAINMETER_RADIUS_M < SHALLOW_LIMESTONE_TOP_Z_M
+            ):
+                raise ValueError(
+                    f"{sensor.sensor_id} pod is not fully contained in the representative limestone layer."
+                )
 
     prior_radius = INJECTION_RADIUS_M
     prior_spacing = 0.0
@@ -682,71 +861,279 @@ def matrix_point_is_excluded(x_m: float, y_m: float, z_m: float) -> bool:
     return False
 
 
+def _fractional_shift(level_index: int, phase: float, spacing_m: float) -> float:
+    """Return a deterministic non-repeating in-plane stagger for one z level."""
+    golden_fraction = 0.6180339887498949
+    fraction = (phase + level_index * golden_fraction) % 1.0
+    return (fraction - 0.5) * spacing_m
+
+
+def _inside_inner_hec_zone(u_m: float, v_m: float, zone: HecRefinementZone) -> bool:
+    if zone.inner_x_half_extent_m <= 0.0 or zone.inner_y_half_extent_m <= 0.0:
+        return False
+    return bool(
+        abs(u_m) <= zone.inner_x_half_extent_m
+        and abs(v_m) <= zone.inner_y_half_extent_m
+    )
+
+
 def add_local_hec_vertical_refinement(
     registry: PointRegistry,
     spacing_filter: PointSpacingFilter,
-) -> int:
-    """Add local, free 3-D grading points around the HEC.
+) -> Dict[str, int]:
+    """Add nested, HEC-aligned 3-D free-point grading zones.
 
-    The point cloud is aligned with the HEC strike/width axes, uses a staggered
-    XY lattice between successive z levels, and is excluded wherever the normal
-    matrix exclusion already protects a target.  These points are not facets and
-    do not create new material interfaces.
+    The zones are rectangular annuli in HEC-local coordinates.  Each coarser
+    zone excludes the complete inner rectangle, so the target spacing grows
+    monotonically away from the HEC.  Plane-to-plane irrational staggers avoid
+    long vertical point columns.  These are free points only; the HEC geometry,
+    material interfaces, well PLC, and sensor PLCs are unchanged.
     """
     length_axis, width_axis, _ = hec_axes()
-    half = float(HEC_LOCAL_XY_SPACING_M / 2.0)
-    u_values = np.arange(
-        -HEC_LOCAL_X_HALF_M, HEC_LOCAL_X_HALF_M + 0.5 * HEC_LOCAL_XY_SPACING_M,
-        HEC_LOCAL_XY_SPACING_M,
-        dtype=float,
-    )
-    v_values = np.arange(
-        -HEC_LOCAL_Y_HALF_M, HEC_LOCAL_Y_HALF_M + 0.5 * HEC_LOCAL_XY_SPACING_M,
-        HEC_LOCAL_XY_SPACING_M,
-        dtype=float,
-    )
+    accepted_by_zone: Dict[str, int] = {}
 
-    before = len(registry.points)
-    accepted = 0
+    for zone in HEC_REFINEMENT_ZONES:
+        spacing = float(zone.xy_spacing_m)
+        u_values = np.arange(
+            -zone.x_half_extent_m,
+            zone.x_half_extent_m + 0.5 * spacing,
+            spacing,
+            dtype=float,
+        )
+        v_values = np.arange(
+            -zone.y_half_extent_m,
+            zone.y_half_extent_m + 0.5 * spacing,
+            spacing,
+            dtype=float,
+        )
+        accepted = 0
 
-    for level_index, z_value in enumerate(HEC_LOCAL_VERTICAL_LEVELS_M):
-        u_shift = HEC_LOCAL_STAGGER_M if level_index % 2 else 0.0
-        v_shift = HEC_LOCAL_STAGGER_M if (level_index // 2) % 2 else 0.0
+        for level_index, z_value in enumerate(zone.vertical_levels_m):
+            u_shift = _fractional_shift(level_index, zone.phase_u, spacing)
+            v_shift = _fractional_shift(level_index, zone.phase_v, spacing)
 
-        for i, u_base in enumerate(u_values):
-            u = float(u_base + u_shift)
-            if u < -HEC_LOCAL_X_HALF_M or u > HEC_LOCAL_X_HALF_M:
+            for u_base in u_values:
+                u_m = float(u_base + u_shift)
+                if abs(u_m) > zone.x_half_extent_m:
+                    continue
+                for v_base in v_values:
+                    v_m = float(v_base + v_shift)
+                    if abs(v_m) > zone.y_half_extent_m:
+                        continue
+                    if _inside_inner_hec_zone(u_m, v_m, zone):
+                        continue
+
+                    xy = (
+                        HEC_CENTER[:2]
+                        + u_m * length_axis[:2]
+                        + v_m * width_axis[:2]
+                    )
+                    point = np.array([xy[0], xy[1], float(z_value)], dtype=float)
+
+                    if not inside_domain_for_free_point(point, spacing):
+                        continue
+                    if matrix_point_is_excluded(point[0], point[1], point[2]):
+                        continue
+
+                    minimum_distance = 0.30 * spacing
+                    if spacing_filter.try_add(point, minimum_distance):
+                        accepted += 1
+
+        accepted_by_zone[zone.name] = accepted
+
+    return accepted_by_zone
+
+
+def _hec_interface_candidate_xy(
+    spec: HecInterfaceRefinementSpec,
+) -> np.ndarray:
+    """Return unique HEC-aligned candidate XY points for one PLC interface."""
+    length_axis, width_axis, _ = hec_axes()
+    selected = {zone.name: zone for zone in HEC_REFINEMENT_ZONES}
+    values: List[Tuple[float, float]] = []
+    plane_phase = 0.173 if spec.z_m > -532.5 else 0.347
+
+    for zone_index, zone_name in enumerate(spec.zone_names):
+        zone = selected[zone_name]
+        spacing = float(zone.xy_spacing_m)
+        u_shift = ((plane_phase + 0.271 * zone_index) % 1.0 - 0.5) * spacing
+        v_shift = ((0.619 * plane_phase + 0.389 * zone_index) % 1.0 - 0.5) * spacing
+        u_values = np.arange(
+            -zone.x_half_extent_m,
+            zone.x_half_extent_m + 0.5 * spacing,
+            spacing,
+            dtype=float,
+        )
+        v_values = np.arange(
+            -zone.y_half_extent_m,
+            zone.y_half_extent_m + 0.5 * spacing,
+            spacing,
+            dtype=float,
+        )
+
+        for u_base in u_values:
+            u_m = float(u_base + u_shift)
+            if abs(u_m) > zone.x_half_extent_m:
                 continue
-            for j, v_base in enumerate(v_values):
-                v = float(v_base + v_shift)
-                if v < -HEC_LOCAL_Y_HALF_M or v > HEC_LOCAL_Y_HALF_M:
+            for v_base in v_values:
+                v_m = float(v_base + v_shift)
+                if abs(v_m) > zone.y_half_extent_m:
                     continue
-
-                xy = (
-                    HEC_CENTER[:2]
-                    + u * length_axis[:2]
-                    + v * width_axis[:2]
-                )
-                point = np.array([xy[0], xy[1], float(z_value)], dtype=float)
-
-                if not inside_domain_for_free_point(point, HEC_LOCAL_XY_SPACING_M):
+                if _inside_inner_hec_zone(u_m, v_m, zone):
                     continue
-                if matrix_point_is_excluded(point[0], point[1], point[2]):
+                xy = HEC_CENTER[:2] + u_m * length_axis[:2] + v_m * width_axis[:2]
+                if not (
+                    DOMAIN_MIN[0] < xy[0] < DOMAIN_MAX[0]
+                    and DOMAIN_MIN[1] < xy[1] < DOMAIN_MAX[1]
+                ):
                     continue
+                values.append((float(xy[0]), float(xy[1])))
 
-                if spacing_filter.try_add(point, 0.25 * HEC_LOCAL_XY_SPACING_M):
-                    accepted += 1
+    if not values:
+        return np.empty((0, 2), dtype=float)
+    unique = sorted({(round(x, 10), round(y, 10)) for x, y in values})
+    return np.asarray(unique, dtype=float)
 
-    return accepted
+
+def _strict_points_inside_triangle(
+    candidate_xy: np.ndarray,
+    triangle_xy: np.ndarray,
+    edge_clearance_m: float,
+) -> np.ndarray:
+    """Return candidates strictly inside one original coarse triangle."""
+    if candidate_xy.size == 0:
+        return np.zeros(0, dtype=bool)
+
+    a, b, c = triangle_xy
+    matrix = np.column_stack((b - a, c - a))
+    determinant = float(np.linalg.det(matrix))
+    if abs(determinant) <= HEC_INTERFACE_AREA_TOLERANCE_M2:
+        raise RuntimeError("Degenerate coarse interface triangle encountered.")
+
+    uv = np.linalg.solve(matrix, (candidate_xy - a).T).T
+    bary = np.column_stack((1.0 - uv[:, 0] - uv[:, 1], uv[:, 0], uv[:, 1]))
+    inside = np.all(bary > 1.0e-12, axis=1)
+    if not np.any(inside):
+        return inside
+
+    def line_distance(points: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+        edge = second - first
+        length = float(np.linalg.norm(edge))
+        if length <= 0.0:
+            return np.zeros(points.shape[0], dtype=float)
+        return np.abs(
+            edge[0] * (points[:, 1] - first[1])
+            - edge[1] * (points[:, 0] - first[0])
+        ) / length
+
+    distances = np.column_stack((
+        line_distance(candidate_xy, a, b),
+        line_distance(candidate_xy, b, c),
+        line_distance(candidate_xy, c, a),
+    ))
+    return inside & (np.min(distances, axis=1) >= edge_clearance_m)
+
+
+def _add_refined_horizontal_triangle(
+    registry: PointRegistry,
+    facets: List[Facet],
+    coarse_ids: Tuple[int, int, int],
+    z_value: float,
+    normal: Sequence[float],
+    marker: int,
+    candidate_xy: np.ndarray,
+    candidate_used: np.ndarray,
+) -> Tuple[int, int]:
+    """Replace one coarse PLC triangle by a conforming local triangulation."""
+    coarse_xy = np.vstack([registry.xyz(point_id)[:2] for point_id in coarse_ids])
+    bbox_min = np.min(coarse_xy, axis=0) - HEC_INTERFACE_EDGE_CLEARANCE_M
+    bbox_max = np.max(coarse_xy, axis=0) + HEC_INTERFACE_EDGE_CLEARANCE_M
+    in_box = np.all((candidate_xy >= bbox_min) & (candidate_xy <= bbox_max), axis=1)
+    available_indices = np.where(in_box & ~candidate_used)[0]
+
+    if available_indices.size:
+        local_mask = _strict_points_inside_triangle(
+            candidate_xy[available_indices],
+            coarse_xy,
+            HEC_INTERFACE_EDGE_CLEARANCE_M,
+        )
+        selected_indices = available_indices[local_mask]
+    else:
+        selected_indices = np.empty(0, dtype=int)
+
+    if selected_indices.size == 0:
+        add_oriented_triangle(registry, facets, coarse_ids, normal, marker)
+        return 0, 1
+
+    local_xy = np.vstack((coarse_xy, candidate_xy[selected_indices]))
+    try:
+        triangulation = Delaunay(local_xy, qhull_options="Qbb Qc Qz Q12")
+    except QhullError as exc:
+        raise RuntimeError(
+            f"Local interface triangulation failed at z={z_value:g} m for "
+            f"coarse facet {coarse_ids}."
+        ) from exc
+
+    local_ids: List[int] = list(coarse_ids)
+    for x_m, y_m in candidate_xy[selected_indices]:
+        local_ids.append(registry.add((float(x_m), float(y_m), float(z_value))))
+
+    used_local_vertices = set(int(value) for value in np.unique(triangulation.simplices))
+    expected_local_vertices = set(range(local_xy.shape[0]))
+    if used_local_vertices != expected_local_vertices:
+        missing = sorted(expected_local_vertices - used_local_vertices)
+        raise RuntimeError(
+            f"Local interface triangulation omitted {len(missing)} embedded point(s) "
+            f"at z={z_value:g} m."
+        )
+
+    generated = 0
+    for simplex in triangulation.simplices:
+        ids = tuple(local_ids[int(index)] for index in simplex)
+        p0, p1, p2 = (registry.xyz(point_id) for point_id in ids)
+        area2 = float(np.linalg.norm(np.cross(p1 - p0, p2 - p0)))
+        if area2 <= 2.0 * HEC_INTERFACE_AREA_TOLERANCE_M2:
+            raise RuntimeError(
+                f"Near-zero local interface facet at z={z_value:g} m: {ids}."
+            )
+        add_oriented_triangle(registry, facets, ids, normal, marker)
+        generated += 1
+
+    candidate_used[selected_indices] = True
+    return int(selected_indices.size), generated
+
+
+def _interface_spec_by_z() -> Dict[float, HecInterfaceRefinementSpec]:
+    return {float(spec.z_m): spec for spec in HEC_INTERFACE_REFINEMENT_SPECS}
 
 
 def build_matrix_surface_plc(
     registry: PointRegistry,
     facets: List[Facet],
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, Dict[str, int]]]:
     x_values, y_values = make_x_axis(), make_y_axis()
     nx, ny = len(x_values) - 1, len(y_values) - 1
     nodes: Dict[Tuple[int, int, int], int] = {}
+
+    interface_specs = _interface_spec_by_z()
+    interface_candidates: Dict[float, np.ndarray] = {
+        z_m: _hec_interface_candidate_xy(spec)
+        for z_m, spec in interface_specs.items()
+    }
+    interface_used: Dict[float, np.ndarray] = {
+        z_m: np.zeros(points.shape[0], dtype=bool)
+        for z_m, points in interface_candidates.items()
+    }
+    interface_stats: Dict[str, Dict[str, int]] = {
+        spec.name: {
+            "candidate_points": int(interface_candidates[float(spec.z_m)].shape[0]),
+            "embedded_points": 0,
+            "skipped_near_coarse_edges": 0,
+            "coarse_facets_replaced": 0,
+            "generated_facets": 0,
+        }
+        for spec in HEC_INTERFACE_REFINEMENT_SPECS
+    }
 
     for k, z_value in enumerate(Z_LEVELS):
         for i, base_x in enumerate(x_values):
@@ -779,19 +1166,46 @@ def build_matrix_surface_plc(
             marker, normal = BOUNDARY_MARKERS["top"], (0.0, 0.0, 1.0)
         else:
             marker, normal = 0, (0.0, 0.0, 1.0)
+        spec = interface_specs.get(float(z_value))
+        candidates = interface_candidates.get(float(z_value))
+        used = interface_used.get(float(z_value))
+
         for i in range(nx):
             for j in range(ny):
                 p00 = nodes[(i, j, k)]
                 p10 = nodes[(i + 1, j, k)]
                 p11 = nodes[(i + 1, j + 1, k)]
                 p01 = nodes[(i, j + 1, k)]
-                # Alternate diagonals to avoid a domain-wide directional bias.
                 if (i + j + k) % 2 == 0:
-                    add_oriented_triangle(registry, facets, (p00, p10, p11), normal, marker)
-                    add_oriented_triangle(registry, facets, (p00, p11, p01), normal, marker)
+                    coarse_triangles = ((p00, p10, p11), (p00, p11, p01))
                 else:
-                    add_oriented_triangle(registry, facets, (p00, p10, p01), normal, marker)
-                    add_oriented_triangle(registry, facets, (p10, p11, p01), normal, marker)
+                    coarse_triangles = ((p00, p10, p01), (p10, p11, p01))
+
+                if spec is None or candidates is None or used is None:
+                    for coarse_ids in coarse_triangles:
+                        add_oriented_triangle(registry, facets, coarse_ids, normal, marker)
+                    continue
+
+                stats = interface_stats[spec.name]
+                for coarse_ids in coarse_triangles:
+                    embedded, generated = _add_refined_horizontal_triangle(
+                        registry, facets, coarse_ids, float(z_value), normal,
+                        marker, candidates, used,
+                    )
+                    stats["embedded_points"] += embedded
+                    stats["generated_facets"] += generated
+                    if embedded:
+                        stats["coarse_facets_replaced"] += 1
+
+        if spec is not None and used is not None:
+            stats = interface_stats[spec.name]
+            stats["skipped_near_coarse_edges"] = int(np.count_nonzero(~used))
+            print(
+                f"    conforming interface {spec.name:34s}: "
+                f"embedded {stats['embedded_points']:,} / "
+                f"{stats['candidate_points']:,} candidates; "
+                f"generated {stats['generated_facets']:,} facets"
+            )
 
     for k in range(len(Z_LEVELS) - 1):
         for i in range(nx):
@@ -816,7 +1230,7 @@ def build_matrix_surface_plc(
             add_oriented_triangle(registry, facets, (p00, p10, p11), (1.0, 0.0, 0.0), BOUNDARY_MARKERS["east"])
             add_oriented_triangle(registry, facets, (p00, p11, p01), (1.0, 0.0, 0.0), BOUNDARY_MARKERS["east"])
 
-    return x_values, y_values
+    return x_values, y_values, interface_stats
 
 # =============================================================================
 # Injection-well PLC and tube-shell refinement.
@@ -928,8 +1342,27 @@ def add_vertical_cylinder_plc(
 
 
 def inside_domain_for_free_point(point: np.ndarray, local_spacing_m: float) -> bool:
-    clearance = max(DOMAIN_FREE_POINT_CLEARANCE_M, 0.01 * local_spacing_m)
-    return bool(np.all(point > DOMAIN_MIN + clearance) and np.all(point < DOMAIN_MAX - clearance))
+    """Return True only for an admissible unconstrained refinement point.
+
+    In addition to the external-domain clearance, free points are kept away
+    from every constrained horizontal PLC plane.  A point that lies exactly on
+    such a plane is not automatically embedded in that plane's triangle mesh;
+    supplying it as an unrelated Part-1 point creates a PLC self-intersection.
+    """
+    domain_clearance = max(DOMAIN_FREE_POINT_CLEARANCE_M, 0.01 * local_spacing_m)
+    if not bool(np.all(point > DOMAIN_MIN + domain_clearance) and np.all(point < DOMAIN_MAX - domain_clearance)):
+        return False
+
+    interface_clearance = max(
+        HORIZONTAL_PLC_FREE_POINT_CLEARANCE_MIN_M,
+        HORIZONTAL_PLC_FREE_POINT_CLEARANCE_FACTOR * local_spacing_m,
+    )
+    z_value = float(point[2])
+    for interface_z in HORIZONTAL_PLC_LEVELS_M:
+        if abs(z_value - float(interface_z)) <= interface_clearance:
+            return False
+
+    return True
 
 
 def add_injection_tube_shell_points(
@@ -1193,6 +1626,7 @@ LAYER_MAX_VOLUMES_M3: Dict[int, float] = {
     2: 1.0e12,
     3: 1.0e12,
     4: 1.0e12,
+    SHALLOW_LIMESTONE_MATERIAL_ID: 1.0e12,
 }
 TARGET_MAX_VOLUMES_M3: Dict[str, float] = {
     # Keep the tag-only HEC / well / strainmeter regions unconstrained for now.
@@ -1200,11 +1634,19 @@ TARGET_MAX_VOLUMES_M3: Dict[str, float] = {
 }
 
 def matrix_regions() -> Tuple[Region, ...]:
-    # Use locations far from all local targets.  The seed order is top-to-bottom
-    # for readability; TetGen only uses the region attribute values.
+    # Use locations far from all local targets.  The limestone separates the
+    # material-1 overburden into two disconnected volumes, so upper and lower
+    # overburden each require a TetGen region seed even though they share ID 1.
     x, y = 1000.0, 1000.0
     return (
-        Region(np.array([x, y, -250.0]), 1, "overburden", LAYER_MAX_VOLUMES_M3[1]),
+        Region(np.array([x, y, -12.5]), 1, "upper_overburden", LAYER_MAX_VOLUMES_M3[1]),
+        Region(
+            np.array([x, y, 0.5 * (SHALLOW_LIMESTONE_BOTTOM_Z_M + SHALLOW_LIMESTONE_TOP_Z_M)]),
+            SHALLOW_LIMESTONE_MATERIAL_ID,
+            "shallow_limestone",
+            LAYER_MAX_VOLUMES_M3[SHALLOW_LIMESTONE_MATERIAL_ID],
+        ),
+        Region(np.array([x, y, -250.0]), 1, "lower_overburden", LAYER_MAX_VOLUMES_M3[1]),
         Region(np.array([x, y, -515.0]), 2, "bartlesville_sand", LAYER_MAX_VOLUMES_M3[2]),
         Region(np.array([x, y, -532.5]), 3, "basal_layer", LAYER_MAX_VOLUMES_M3[3]),
         Region(np.array([x, y, -1035.0]), 4, "underburden", LAYER_MAX_VOLUMES_M3[4]),
@@ -1217,7 +1659,7 @@ def write_poly(
     regions: Sequence[Region],
 ) -> None:
     with path.open("w", encoding="utf-8") as handle:
-        handle.write("# Bartlesville PLC: z=0 top, z=-1535 bottom; corrected stratigraphy with the HEC inside Bartlesville sandstone\n\n")
+        handle.write("# Bartlesville PLC: z=0 top, z=-1535 bottom; representative shallow limestone at -35 to -25 m; HEC inside Bartlesville sandstone\n\n")
         handle.write("# Part 1 - node list\n")
         handle.write(f"{len(registry.points)} 3 0 0\n")
         for point_id, xyz in enumerate(registry.points, start=1):
@@ -1292,6 +1734,8 @@ def write_sidecars(
     y_values: np.ndarray,
     target_stats: Dict[str, Dict[str, int]],
     topology: Dict[int, Dict[str, int]],
+    hec_zone_stats: Dict[str, int],
+    interface_stats: Dict[str, Dict[str, int]],
 ) -> None:
     length_axis, width_axis, up_axis = hec_axes()
 
@@ -1331,6 +1775,12 @@ def write_sidecars(
             "size": DOMAIN_SIZE.tolist(),
         },
         "layers": [asdict(layer) for layer in LAYERS],
+        "representative_shallow_limestone": {
+            "material_id": SHALLOW_LIMESTONE_MATERIAL_ID,
+            "top_z_m": SHALLOW_LIMESTONE_TOP_Z_M,
+            "bottom_z_m": SHALLOW_LIMESTONE_BOTTOM_Z_M,
+            "status": "provisional equivalent layer centered on AVN2 and AVN87 at z=-30 m",
+        },
         "vertical_bands": [asdict(band) for band in VERTICAL_BANDS],
         "z_levels_m": list(Z_LEVELS),
         "matrix": {
@@ -1339,12 +1789,18 @@ def write_sidecars(
             "rotated_hec_lattice_step_m": ROTATED_TAG_LATTICE_STEP_M,
         },
         "meshing": {
-            "strategy": "closed target PLCs plus staggered tube shells and rotated geodesic shells",
+            "strategy": "closed target PLCs, graded target shells, nested HEC halos, and conforming local refinement of the -530/-535 m PLC interfaces",
             "tetgen_default_flags": DEFAULT_TETGEN_FLAGS,
             "point_count": len(registry.points),
             "facet_count": len(facets),
             "holes": 0,
-            "regions": 4 + len(REFINEMENT_TARGETS),
+            "regions": len(matrix_regions()) + len(REFINEMENT_TARGETS),
+            "hec_refinement_zones": [asdict(zone) for zone in HEC_REFINEMENT_ZONES],
+            "hec_refinement_points_by_zone": dict(hec_zone_stats),
+            "hec_interface_refinement_specs": [
+                asdict(spec) for spec in HEC_INTERFACE_REFINEMENT_SPECS
+            ],
+            "hec_interface_refinement_stats": interface_stats,
         },
         "hec": {
             "name": HEC_NAME,
@@ -1443,14 +1899,39 @@ def write_sidecars(
 
     with Path(f"{mesh_prefix}_hec_local_vertical_refinement.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["z_m", "xy_spacing_m", "x_half_extent_m", "y_half_extent_m", "stagger_m"])
-        for z_value in HEC_LOCAL_VERTICAL_LEVELS_M:
+        writer.writerow([
+            "zone", "z_m", "xy_spacing_m", "x_half_extent_m",
+            "y_half_extent_m", "inner_x_half_extent_m",
+            "inner_y_half_extent_m", "accepted_points",
+        ])
+        for zone in HEC_REFINEMENT_ZONES:
+            for z_value in zone.vertical_levels_m:
+                writer.writerow([
+                    zone.name,
+                    f"{z_value:.6f}",
+                    f"{zone.xy_spacing_m:.6f}",
+                    f"{zone.x_half_extent_m:.6f}",
+                    f"{zone.y_half_extent_m:.6f}",
+                    f"{zone.inner_x_half_extent_m:.6f}",
+                    f"{zone.inner_y_half_extent_m:.6f}",
+                    hec_zone_stats.get(zone.name, 0),
+                ])
+
+    with Path(f"{mesh_prefix}_hec_interface_refinement.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow([
+            "interface", "z_m", "zone_names", "candidate_points",
+            "embedded_points", "skipped_near_coarse_edges",
+            "coarse_facets_replaced", "generated_facets",
+        ])
+        spec_by_name = {spec.name: spec for spec in HEC_INTERFACE_REFINEMENT_SPECS}
+        for name, stats in interface_stats.items():
+            spec = spec_by_name[name]
             writer.writerow([
-                f"{z_value:.6f}",
-                f"{HEC_LOCAL_XY_SPACING_M:.6f}",
-                f"{HEC_LOCAL_X_HALF_M:.6f}",
-                f"{HEC_LOCAL_Y_HALF_M:.6f}",
-                f"{HEC_LOCAL_STAGGER_M:.6f}",
+                name, f"{spec.z_m:.6f}", ";".join(spec.zone_names),
+                stats["candidate_points"], stats["embedded_points"],
+                stats["skipped_near_coarse_edges"],
+                stats["coarse_facets_replaced"], stats["generated_facets"],
             ])
 
     with Path(f"{mesh_prefix}_vertical_grading.csv").open("w", newline="", encoding="utf-8") as handle:
@@ -1469,6 +1950,42 @@ def write_sidecars(
                 "note": band.note,
             })
 
+def validate_no_unembedded_points_on_horizontal_plcs(
+    registry: PointRegistry,
+    facets: Sequence[Facet],
+    tolerance: float = 1.0e-9,
+) -> None:
+    """Fail before TetGen if a free point lies on a horizontal PLC plane.
+
+    Vertices that belong to at least one constrained facet are legitimate PLC
+    vertices.  Any other point exactly on a constrained horizontal interface
+    would be an unembedded point-on-facet intersection.
+    """
+    facet_point_ids = {point_id for facet in facets for point_id in facet.point_ids}
+    offenders: List[Tuple[int, np.ndarray, float]] = []
+
+    for point_id, point in enumerate(registry.points, start=1):
+        if point_id in facet_point_ids:
+            continue
+        z_value = float(point[2])
+        for interface_z in HORIZONTAL_PLC_LEVELS_M:
+            if math.isclose(z_value, float(interface_z), rel_tol=0.0, abs_tol=tolerance):
+                offenders.append((point_id, point, float(interface_z)))
+                break
+
+    if offenders:
+        examples = "; ".join(
+            f"id={point_id} xyz=({point[0]:.10g},{point[1]:.10g},{point[2]:.10g}) plane_z={plane_z:g}"
+            for point_id, point, plane_z in offenders[:12]
+        )
+        raise RuntimeError(
+            f"{len(offenders)} unconstrained point(s) lie on constrained horizontal PLC planes. "
+            f"Examples: {examples}"
+        )
+
+    print("    horizontal-PLC point audit : passed")
+
+
 # =============================================================================
 # Build, TetGen run, and TetGen-output validation.
 # =============================================================================
@@ -1479,11 +1996,15 @@ def build_geometry(mesh_prefix: str) -> Tuple[Path, Dict[str, int]]:
     registry = PointRegistry()
     facets: List[Facet] = []
 
-    x_values, y_values = build_matrix_surface_plc(registry, facets)
+    x_values, y_values, interface_stats = build_matrix_surface_plc(registry, facets)
     target_stats = add_target_plcs_and_refinement(registry, facets)
-    local_spacing_filter = PointSpacingFilter(registry)
-    local_hec_points = add_local_hec_vertical_refinement(registry, local_spacing_filter)
+    # HEC halo separations are 6--24 m; a 5 m spatial-hash bin avoids the
+    # prohibitively large neighbor search that the 0.75 m well/pod bin would cause.
+    local_spacing_filter = PointSpacingFilter(registry, bin_size_m=5.0)
+    hec_zone_stats = add_local_hec_vertical_refinement(registry, local_spacing_filter)
+    local_hec_points = sum(hec_zone_stats.values())
     topology = validate_target_surface_topology(facets)
+    validate_no_unembedded_points_on_horizontal_plcs(registry, facets)
 
     if len(registry.points) > MAX_RECOMMENDED_INPUT_POINTS:
         raise RuntimeError(
@@ -1499,7 +2020,10 @@ def build_geometry(mesh_prefix: str) -> Tuple[Path, Dict[str, int]]:
     regions = matrix_regions() + tuple(target_region_seed(target) for target in REFINEMENT_TARGETS)
     poly_path = Path(f"{mesh_prefix}.poly")
     write_poly(poly_path, registry, facets, regions)
-    write_sidecars(mesh_prefix, registry, facets, x_values, y_values, target_stats, topology)
+    write_sidecars(
+        mesh_prefix, registry, facets, x_values, y_values,
+        target_stats, topology, hec_zone_stats, interface_stats,
+    )
 
     counts: Dict[str, int] = {
         "points": len(registry.points),
@@ -1508,6 +2032,13 @@ def build_geometry(mesh_prefix: str) -> Tuple[Path, Dict[str, int]]:
         "regions": len(regions),
         "local_refinement_points": sum(stats["refinement_points"] for stats in target_stats.values()),
         "hec_local_vertical_refinement_points": local_hec_points,
+        "hec_interface_refinement_points": sum(
+            stats["embedded_points"] for stats in interface_stats.values()
+        ),
+        "hec_interface_refinement_facets": sum(
+            stats["generated_facets"] for stats in interface_stats.values()
+        ),
+        **{f"hec_{name}_refinement_points": count for name, count in hec_zone_stats.items()},
     }
     for name, stats in target_stats.items():
         counts[f"{name}_surface_points"] = stats["surface_points"]
@@ -1613,6 +2144,23 @@ def tetgen_switch_present(flags: str, switch: str) -> bool:
 
 
 def run_tetgen(tetgen_exe: str, poly_path: Path, diagnose: bool) -> None:
+    # Remove stale TetGen products before every run.  TetGen can write partial
+    # .1.* files before returning a nonzero status (for example after PLC
+    # self-intersection detection); those files must never be mistaken for a
+    # valid mesh by the quality report or downstream workflow.
+    output_prefix = poly_path.with_suffix("")
+    tetgen_outputs = [
+        output_prefix.with_suffix(suffix)
+        for suffix in (".1.node", ".1.ele", ".1.face", ".1.edge", ".1.neigh")
+    ]
+    diagnostic_outputs = [
+        output_prefix.with_name(output_prefix.name + "_skipped.node"),
+        output_prefix.with_name(output_prefix.name + "_skipped.face"),
+    ]
+    for path in [*tetgen_outputs, *diagnostic_outputs]:
+        if path.exists():
+            path.unlink()
+
     flags = os.environ.get("BARTLESVILLE_TETGEN_FLAGS", DEFAULT_TETGEN_FLAGS).strip()
     if not flags:
         raise ValueError("BARTLESVILLE_TETGEN_FLAGS cannot be empty.")
@@ -1630,11 +2178,22 @@ def run_tetgen(tetgen_exe: str, poly_path: Path, diagnose: bool) -> None:
     print(f"    domain z range          : {DOMAIN_MIN[2]:g} to {DOMAIN_MAX[2]:g} m")
     print(f"    injection radius        : {INJECTION_RADIUS_M:g} m")
     print(f"    strainmeter radius      : {STRAINMETER_RADIUS_M:g} m")
-    print("    local layout            : lean staggered tube shells + rotated geodesic shells")
-    print("    quality refinement      : disabled; TEST 5 local vertical grading")
+    print("    local layout            : nested HEC halos + conforming -530/-535 m interface patches + graded tube/geodesic shells")
+    print("    quality refinement      : disabled by default; V4 uses explicit local grading")
     print("    TetGen flags            :", flags)
     print("CMD:", " ".join(shlex.quote(token) for token in command))
-    subprocess.run(command, check=True)
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as exc:
+        # Preserve TetGen's *_skipped.node/face diagnostics, but remove partial
+        # mesh products so no downstream command can consume an invalid mesh.
+        for path in tetgen_outputs:
+            if path.exists():
+                path.unlink()
+        raise RuntimeError(
+            f"TetGen failed with exit status {exc.returncode}; partial .1.* outputs were removed. "
+            "Inspect the TetGen log and any *_skipped.node/face files."
+        ) from exc
 
     diagnostics = validate_tetgen_output(poly_path)
     print("\n--> TetGen mesh validation")
@@ -1668,6 +2227,7 @@ def main() -> None:
     print(f"    strainmeter locations   : {prefix}_strainmeters.csv")
     print(f"    vertical grading        : {prefix}_vertical_grading.csv")
     print(f"    HEC local vertical     : {prefix}_hec_local_vertical_refinement.csv")
+    print(f"    HEC interface refinement: {prefix}_hec_interface_refinement.csv")
     for name, value in counts.items():
         print(f"    {name:27s}: {value}")
     print(f"    rough no-q tet estimate : {5 * counts['points']:,}--{8 * counts['points']:,}")

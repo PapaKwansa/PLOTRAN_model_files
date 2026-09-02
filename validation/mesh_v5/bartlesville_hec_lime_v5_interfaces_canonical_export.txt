@@ -1,0 +1,15 @@
+Canonical TetGen export passed
+node_file=bartlesville_hec_lime_v5_interfaces.1.node
+element_file=bartlesville_hec_lime_v5_interfaces.1.ele
+avs_file=bartlesville_hec_lime_v5_interfaces.inp
+ugi_file=bartlesville_hec_lime_v5_interfaces.ugi
+node_count=140456
+tetrahedron_count=802245
+node_mapping=tetgen_node_file_row_order_to_contiguous_1_based
+connectivity_source=single_canonical_array_shared_by_avs_and_ugi
+connectivity_sha256=1c0bb559c221cf173ff541f0dfe03319568867b24d3387f7c19db60c8f3a096d
+reoriented_tetrahedra=0
+minimum_absolute_six_volume=4.0204862673323547e-04
+maximum_absolute_six_volume=2.1429928603561141e+07
+degenerate_threshold_absolute_six_volume=9.9999999999999998e-13
+element_attribute_counts=1:216353,2:174887,3:87498,4:279796,6:176,7:102,8:96,9:100,10:43237

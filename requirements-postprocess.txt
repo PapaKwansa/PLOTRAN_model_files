@@ -1,0 +1,7 @@
+# North Avant V5 PFLOTRAN postprocessing environment
+# NumPy is constrained below 2 because the user's previous system Matplotlib
+# binary was compiled against the NumPy 1.x ABI.
+numpy>=1.26,<2
+h5py>=3.10
+meshio>=5.3
+matplotlib>=3.8,<3.10

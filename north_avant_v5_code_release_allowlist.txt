@@ -1,0 +1,37 @@
+# North Avant V5 code-release allowlist
+#
+# These files should be present before the release audit passes.
+
+# Production decks and Slurm pipeline
+north_avant_v5_twoway_preproduction_4h.in
+north_avant_v5_twoway_production_96h_final.in
+run_north_avant_v5_simulation.slurm
+postprocess_north_avant_v5_results.slurm
+submit_north_avant_v5_pipeline.sh
+
+# Production postprocessing and bundle verification
+pflotran_coupled_to_vtu.py
+pflotran_region_timeseries_plots.py
+preflight_north_avant_v5_bundle.py
+north_avant_v5_runtime_manifest.txt
+requirements-postprocess.txt
+
+# Mesh-generation source retained for reproducibility
+build_poly_layers4.py
+layers4_get_material_boundary_tags.py
+tetgen_quality_report_localized.py
+tetgen_to_avs_ugi_canonical.py
+material_h5_from_txt.py
+validate_uge_and_write_mapping.py
+build_boundary_ex.py
+
+# Validation source
+compare_oneway_twoway.py
+compare_continuous_restart.py
+restart_acceptance_gate.py
+audit_xmf_h5_v2.py
+
+# Documentation
+README.md
+README_PIPELINE.md
+NORTH_AVANT_V5_PRODUCTION_PHYSICS.md

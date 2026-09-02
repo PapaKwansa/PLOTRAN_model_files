@@ -1,0 +1,70 @@
+PFLOTRAN RESTART-EQUIVALENCE ACCEPTANCE GATE
+================================================================================================
+Criterion: relative L2 passes OR field-specific maximum absolute difference passes.
+Material IDs must match exactly.
+
+GEOMECHANICS AT 0.1 h
+------------------------------------------------------------------------------------------------
+PASS  displacement_x_m                      relL2=4.843706e-04  max|delta|=1.204418e-10  maxDelta/peak=2.624800e-05
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 1.0e-09 m
+PASS  displacement_y_m                      relL2=4.643559e-04  max|delta|=1.215247e-10  maxDelta/peak=3.262410e-05
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 1.0e-09 m
+PASS  displacement_z_m                      relL2=1.332297e-04  max|delta|=1.802563e-10  maxDelta/peak=1.024117e-05
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 1.0e-09 m
+PASS  material_id                           relL2=0.000000e+00  max|delta|=0.000000e+00  maxDelta/peak=n/a
+      criterion: exact material-ID agreement required
+PASS  relative_displacement_x_m             relL2=4.844545e-04  max|delta|=1.204619e-10  maxDelta/peak=2.625239e-05
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 1.0e-09 m
+PASS  relative_displacement_y_m             relL2=4.644343e-04  max|delta|=1.215452e-10  maxDelta/peak=3.262961e-05
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 1.0e-09 m
+PASS  relative_displacement_z_m             relL2=1.332080e-04  max|delta|=1.802315e-10  maxDelta/peak=1.023977e-05
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 1.0e-09 m
+PASS  strain_xx                             relL2=5.478280e-06  max|delta|=5.071465e-12  maxDelta/peak=2.187024e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 5.0e-11 dimensionless
+PASS  strain_xy                             relL2=5.145510e-06  max|delta|=3.940018e-12  maxDelta/peak=1.557023e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 5.0e-11 dimensionless
+PASS  strain_yy                             relL2=6.788907e-06  max|delta|=7.776435e-12  maxDelta/peak=3.283338e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 5.0e-11 dimensionless
+PASS  strain_yz                             relL2=4.951094e-06  max|delta|=6.822914e-12  maxDelta/peak=2.003563e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 5.0e-11 dimensionless
+PASS  strain_zx                             relL2=4.774891e-06  max|delta|=6.255680e-12  maxDelta/peak=1.963347e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 5.0e-11 dimensionless
+PASS  strain_zz                             relL2=1.698460e-06  max|delta|=2.955120e-11  maxDelta/peak=1.134741e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 5.0e-11 dimensionless
+PASS  stress_total_xx_pa                    relL2=1.538492e-06  max|delta|=1.039647e+00  maxDelta/peak=1.350015e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_total_xy_pa                    relL2=7.705067e-06  max|delta|=5.402174e-02  maxDelta/peak=2.965057e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_total_yy_pa                    relL2=1.559049e-06  max|delta|=1.053731e+00  maxDelta/peak=1.362016e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_total_yz_pa                    relL2=7.794461e-06  max|delta|=1.196208e-01  maxDelta/peak=4.878736e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_total_zx_pa                    relL2=6.938077e-06  max|delta|=7.561524e-02  maxDelta/peak=3.296092e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_total_zz_pa                    relL2=1.654456e-06  max|delta|=8.384443e-01  maxDelta/peak=1.379037e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_xx_pa                          relL2=3.526587e-06  max|delta|=1.464476e-01  maxDelta/peak=1.178840e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_xy_pa                          relL2=7.705067e-06  max|delta|=5.402174e-02  maxDelta/peak=2.965057e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_yy_pa                          relL2=4.008443e-06  max|delta|=1.751133e-01  maxDelta/peak=1.411790e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_yz_pa                          relL2=7.794461e-06  max|delta|=1.196208e-01  maxDelta/peak=4.878736e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_zx_pa                          relL2=6.938077e-06  max|delta|=7.561524e-02  maxDelta/peak=3.296092e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  stress_zz_pa                          relL2=2.515619e-06  max|delta|=3.252154e-01  maxDelta/peak=1.103500e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 2.0e+00 Pa
+PASS  volumetric_strain                     relL2=1.627263e-06  max|delta|=3.400556e-11  maxDelta/peak=1.127299e-06
+      criterion: relL2 <= 1.0e-05 OR max|delta| <= 5.0e-11 dimensionless
+
+FLOW AT 0.1 h
+------------------------------------------------------------------------------------------------
+PASS  liquid_pressure_pa                    relL2=2.020496e-09  max|delta|=1.236612e+00  maxDelta/peak=8.157243e-08
+      criterion: relL2 <= 1.0e-08 OR max|delta| <= 2.0e+00 Pa
+PASS  material_id                           relL2=0.000000e+00  max|delta|=0.000000e+00  maxDelta/peak=n/a
+      criterion: exact material-ID agreement required
+
+================================================================================================
+RESTART EQUIVALENCE: PASSED
+Note: displacement fields passed by absolute tolerance where their small field norm made a pure relative L2 test misleading.

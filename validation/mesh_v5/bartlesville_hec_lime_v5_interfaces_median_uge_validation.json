@@ -1,0 +1,110 @@
+{
+  "all_vset_file": "bartlesville_hec_lime_v5_interfaces_median_all.vset",
+  "area_over_distance_m": {
+    "max": 1843.5007237959999,
+    "median": 9.550620141243499,
+    "min": 0.0037840757154543286,
+    "p01": 0.4166666666052851,
+    "p05": 0.9201752887443538,
+    "p95": 130.0,
+    "p99": 1562.5
+  },
+  "bisector_relative_error": {
+    "max": 1.0067705566694802e-07,
+    "median": 0.0,
+    "min": 0.0,
+    "p01": 0.0,
+    "p05": 0.0,
+    "p95": 4.752235098346294e-10,
+    "p99": 1.2077438174800996e-09
+  },
+  "cell_count": 140456,
+  "cell_volume_m3": {
+    "max": 14863363.7739,
+    "median": 234375.0,
+    "min": 0.00104357060178,
+    "p01": 13.4230469859,
+    "p05": 1411.84950846,
+    "p95": 4062500.0,
+    "p99": 5976562.5
+  },
+  "center_distance_m": {
+    "max": 544.4951790420187,
+    "median": 125.0,
+    "min": 0.11080481050741536,
+    "p01": 2.855862723119325,
+    "p05": 11.904554878168929,
+    "p95": 279.5084971874737,
+    "p99": 529.9528280894442
+  },
+  "connection_graph_components": 1,
+  "domain": {
+    "expected_volume_m3": 153500000000.0,
+    "maximum_m": [
+      10000.0,
+      10000.0,
+      0.0
+    ],
+    "minimum_m": [
+      0.0,
+      0.0,
+      -1535.0
+    ],
+    "relative_error": 1.988115838762215e-16,
+    "uge_total_volume_m3": 153499999999.99997
+  },
+  "drop_area_le_m2": 0.0,
+  "dropped_connection_count": 0,
+  "dropped_connection_samples": [],
+  "duplicate_connection_pairs": 0,
+  "effective_uge_file": "bartlesville_hec_lime_v5_interfaces_median.uge",
+  "effective_uge_sha256": "fa68c176027cc7813206e472f11824c281425a6bba5747c773b1d03bebe78546",
+  "geomechanics_element_count": 802245,
+  "geomechanics_vertex_count": 140456,
+  "input_uge_file": "bartlesville_hec_lime_v5_interfaces_median.uge",
+  "input_uge_sha256": "fa68c176027cc7813206e472f11824c281425a6bba5747c773b1d03bebe78546",
+  "mapping_file": "bartlesville_hec_lime_v5_interfaces_median.mapping",
+  "material_h5": {
+    "material_distribution": {
+      "1": 43418,
+      "10": 7322,
+      "2": 29992,
+      "3": 14569,
+      "4": 44473,
+      "5": 472,
+      "6": 84,
+      "7": 42,
+      "8": 42,
+      "9": 42
+    },
+    "path": "bartlesville_hec_lime_v5_interfaces_material_ids.h5"
+  },
+  "max_uge_center_vs_node_difference_m": 7.707990562903293e-09,
+  "max_ugi_vertex_vs_node_difference_m": 7.074208581845617e-10,
+  "node_file": "bartlesville_hec_lime_v5_interfaces.1.node",
+  "node_sha256": "d3919dc27f1db459240ceace0c4289c728daab42be53fabd0ee580a84413ad3b",
+  "original_connection_count": 959340,
+  "retained_connection_area_m2": {
+    "max": 35432.4524024,
+    "median": 937.5,
+    "min": 0.000994703149461,
+    "p01": 1.805444723,
+    "p05": 22.470577365,
+    "p95": 9375.0,
+    "p99": 23906.25
+  },
+  "retained_connection_count": 959340,
+  "retained_connection_degree": {
+    "max": 141.0,
+    "median": 14.0,
+    "min": 4.0,
+    "p01": 9.0,
+    "p05": 10.0,
+    "p95": 18.0,
+    "p99": 21.0
+  },
+  "status": "passed",
+  "total_cell_volume_m3": 153499999999.99997,
+  "ugi_file": "bartlesville_hec_lime_v5_interfaces.ugi",
+  "ugi_sha256": "5b2f986d64c47ef133132f85055205ec213d777d57cfaf34cc088c52e297edde"
+}

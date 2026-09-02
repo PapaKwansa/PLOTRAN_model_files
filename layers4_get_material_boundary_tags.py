@@ -13,12 +13,17 @@ Supported target shapes
 * ``sphere``: used by the AVN2, AVN87, and AVN31 strainmeter sensor pods.
 
 Material IDs are assigned after TetGen:
-  1--4  geological layers
+  1     upper/lower overburden
+  2     Bartlesville sandstone
+  3     basal layer
+  4     underburden
   5     tag-only HEC
   6     injection borehole
   7--9  AVN2, AVN87, AVN31 sensor pods
+  10    representative shallow limestone hosting AVN2 and AVN87
 
-No target is a TetGen hole or an internal PLC region.
+No target is a TetGen hole. The well and pods are retained as the current
+closed PLC target regions; the HEC remains tag-only.
 """
 
 from __future__ import annotations
@@ -47,7 +52,11 @@ BASE_MATERIAL_VSETS: Dict[int, str] = {
     3: "basal_layer",
     4: "underburden",
     5: "hec",
+    10: "shallow_limestone",
 }
+
+SHALLOW_LIMESTONE_MATERIAL_ID = 10
+SHALLOW_SENSOR_NAMES = {"AVN2", "AVN87"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -120,12 +129,118 @@ def assign_base_materials(z: np.ndarray, layers: Sequence[Mapping[str, Any]], to
     return result
 
 
+def validate_layer_stack(geometry: Mapping[str, Any], tolerance: float) -> None:
+    """Validate that JSON layers cover the full vertical domain without gaps.
+
+    Material ID 1 is intentionally allowed to occur in two disconnected
+    overburden intervals separated by material 10. Geological layer numbers,
+    however, must remain unique.
+    """
+    layers = geometry.get("layers")
+    if not isinstance(layers, list) or not layers:
+        raise RuntimeError("Geometry JSON does not contain a non-empty layers list.")
+
+    minimum = np.asarray(geometry["domain"]["min"], dtype=float)
+    maximum = np.asarray(geometry["domain"]["max"], dtype=float)
+    ordered = sorted(layers, key=lambda layer: float(layer["z_min"]))
+
+    layer_numbers = [int(layer["number"]) for layer in ordered]
+    if len(layer_numbers) != len(set(layer_numbers)):
+        raise RuntimeError("Geological layer numbers in the geometry JSON are not unique.")
+
+    for index, layer in enumerate(ordered):
+        lower = float(layer["z_min"])
+        upper = float(layer["z_max"])
+        if not np.isfinite([lower, upper]).all() or lower >= upper:
+            raise RuntimeError(f"Invalid layer interval: {layer!r}")
+        if index > 0:
+            previous_upper = float(ordered[index - 1]["z_max"])
+            if not np.isclose(lower, previous_upper, atol=tolerance, rtol=0.0):
+                raise RuntimeError(
+                    "Layer stack contains a gap or overlap between "
+                    f"{ordered[index - 1]['name']} and {layer['name']}: "
+                    f"{previous_upper:g} versus {lower:g} m."
+                )
+
+    if not np.isclose(float(ordered[0]["z_min"]), minimum[2], atol=tolerance, rtol=0.0):
+        raise RuntimeError("Lowest geological layer does not begin at the domain bottom.")
+    if not np.isclose(float(ordered[-1]["z_max"]), maximum[2], atol=tolerance, rtol=0.0):
+        raise RuntimeError("Highest geological layer does not end at the domain top.")
+
+    limestone = [
+        layer for layer in ordered
+        if int(layer["material_id"]) == SHALLOW_LIMESTONE_MATERIAL_ID
+    ]
+    if len(limestone) != 1:
+        raise RuntimeError(
+            "Expected exactly one representative shallow-limestone interval "
+            f"with material ID {SHALLOW_LIMESTONE_MATERIAL_ID}; found {len(limestone)}."
+        )
+
+
+def validate_shallow_sensor_hosts(
+    targets: Sequence[Mapping[str, Any]],
+    geometry: Mapping[str, Any],
+    tolerance: float,
+) -> None:
+    """Confirm that the complete AVN2/AVN87 pods lie inside limestone."""
+    limestone_layers = [
+        layer for layer in geometry["layers"]
+        if int(layer["material_id"]) == SHALLOW_LIMESTONE_MATERIAL_ID
+    ]
+    limestone = limestone_layers[0]
+    lower = float(limestone["z_min"])
+    upper = float(limestone["z_max"])
+
+    by_name = {str(target["name"]): target for target in targets}
+    for name in sorted(SHALLOW_SENSOR_NAMES):
+        if name not in by_name:
+            raise RuntimeError(f"Expected shallow strainmeter target {name} is missing.")
+        target = by_name[name]
+        center = np.asarray(target["center_xyz_m"], dtype=float)
+        radius = float(target["tag_radius_m"])
+        if str(target["tag_shape"]) != "sphere":
+            raise RuntimeError(f"Shallow target {name} must currently be a sphere.")
+        if center[2] - radius < lower - tolerance or center[2] + radius > upper + tolerance:
+            raise RuntimeError(
+                f"{name} pod spans z={center[2]-radius:g} to {center[2]+radius:g} m, "
+                f"outside limestone z={lower:g} to {upper:g} m."
+            )
+
+
+def write_material_assignment_summary(
+    prefix: str,
+    materials: np.ndarray,
+    points: np.ndarray,
+) -> None:
+    """Write count and coordinate bounds for every assigned material ID."""
+    output = Path(f"{prefix}_material_assignment_summary.csv")
+    with output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow([
+            "material_id", "name", "node_count",
+            "x_min_m", "x_max_m", "y_min_m", "y_max_m", "z_min_m", "z_max_m",
+        ])
+        values, counts = np.unique(materials, return_counts=True)
+        target_names = {6: "injection_borehole", 7: "AVN2", 8: "AVN87", 9: "AVN31"}
+        for material_id, count in zip(values, counts):
+            selected = points[materials == material_id]
+            name = BASE_MATERIAL_VSETS.get(int(material_id), target_names.get(int(material_id), "unknown"))
+            writer.writerow([
+                int(material_id), name, int(count),
+                f"{np.min(selected[:,0]):.10f}", f"{np.max(selected[:,0]):.10f}",
+                f"{np.min(selected[:,1]):.10f}", f"{np.max(selected[:,1]):.10f}",
+                f"{np.min(selected[:,2]):.10f}", f"{np.max(selected[:,2]):.10f}",
+            ])
+    print(f"--> Wrote {output}")
+
+
 def pure_outer_face_masks(
     points: np.ndarray,
     domain: Mapping[str, Any],
     tolerance: float,
 ) -> Dict[str, np.ndarray]:
-    """Return masks for the open part of each outer face, excluding edges/corners."""
+    """Return masks for each complete outer face, including shared edges/corners."""
     minimum = np.asarray(domain["min"], dtype=float)
     maximum = np.asarray(domain["max"], dtype=float)
     x, y, z = points[:, 0], points[:, 1], points[:, 2]
@@ -135,15 +250,6 @@ def pure_outer_face_masks(
     south = np.isclose(y, minimum[1], atol=tolerance)
     east = np.isclose(x, maximum[0], atol=tolerance)
     west = np.isclose(x, minimum[0], atol=tolerance)
-    hit_count = (
-        top.astype(int)
-        + bottom.astype(int)
-        + north.astype(int)
-        + south.astype(int)
-        + east.astype(int)
-        + west.astype(int)
-    )
-   
     return {
     "top": top,
     "bottom": bottom,
@@ -407,8 +513,20 @@ def main() -> None:
     targets = list(geometry.get("refinement_targets", []))
     validate_refinement_targets(targets)
 
-    points = read_node_xyz(Path(f"{prefix}.1.node"))
     tolerance = 1.0e-6
+    validate_layer_stack(geometry, tolerance)
+    validate_shallow_sensor_hosts(targets, geometry, tolerance)
+
+    points = read_node_xyz(Path(f"{prefix}.1.node"))
+
+    layer_material_ids = {int(layer["material_id"]) for layer in geometry["layers"]}
+    target_material_ids = {int(target["material_id"]) for target in targets}
+    overlap_ids = sorted(layer_material_ids & target_material_ids)
+    if overlap_ids:
+        raise RuntimeError(
+            "Target material IDs overlap geological material IDs: "
+            + ", ".join(str(value) for value in overlap_ids)
+        )
 
     materials = assign_base_materials(points[:, 2], geometry["layers"], tolerance)
     missing = np.where(materials == -999)[0]
@@ -444,8 +562,18 @@ def main() -> None:
         # actually overlap. In the supplied setup they are non-overlapping.
         materials[mask] = int(target["material_id"])
 
+    expected_ids = {1, 2, 3, 4, 5, 6, 7, 8, 9, SHALLOW_LIMESTONE_MATERIAL_ID}
+    present_ids = {int(value) for value in np.unique(materials)}
+    missing_ids = sorted(expected_ids - present_ids)
+    unexpected_ids = sorted(present_ids - expected_ids)
+    if missing_ids or unexpected_ids:
+        raise RuntimeError(
+            f"Unexpected material-ID coverage; missing={missing_ids}, unexpected={unexpected_ids}."
+        )
+
     np.savetxt(f"{prefix}_materials.txt", materials, fmt="%d")
     print(f"--> Wrote {prefix}_materials.txt")
+    write_material_assignment_summary(prefix, materials, points)
 
     # Base layer and HEC vsets.
     for material_id, name in BASE_MATERIAL_VSETS.items():
@@ -458,15 +586,14 @@ def main() -> None:
     injection_mask = np.zeros(points.shape[0], dtype=bool)
     for target in targets:
         name = str(target["name"])
-        material_id = int(target["material_id"])
-        material_mask = materials == material_id
-        count = write_vset(Path(f"{name}.vset"), np.where(material_mask)[0] + 1)
+        target_mask = target_masks[name]
+        count = write_vset(Path(f"{name}.vset"), np.where(target_mask)[0] + 1)
         print(f"    {name}.vset: {count} nodes")
-        all_target_mask |= material_mask
+        all_target_mask |= target_mask
         if str(target.get("kind", "")).startswith("strainmeter"):
-            sensor_mask |= material_mask
+            sensor_mask |= target_mask
         if str(target.get("kind", "")) == "injection_borehole":
-            injection_mask |= material_mask
+            injection_mask |= target_mask
 
     print(f"    refined_targets.vset: {write_vset(Path('refined_targets.vset'), np.where(all_target_mask)[0] + 1)} nodes")
     print(f"    sensor_pods.vset: {write_vset(Path('sensor_pods.vset'), np.where(sensor_mask)[0] + 1)} nodes")

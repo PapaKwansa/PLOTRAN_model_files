@@ -2,3 +2,7 @@
 *.uge filter=lfs diff=lfs merge=lfs -text
 *.ugi filter=lfs diff=lfs merge=lfs -text
 *.h5 filter=lfs diff=lfs merge=lfs -text
+bartlesville_hec_lime_v5_interfaces_median.uge filter=lfs diff=lfs merge=lfs -text
+bartlesville_hec_lime_v5_interfaces.ugi filter=lfs diff=lfs merge=lfs -text
+bartlesville_hec_lime_v5_interfaces_median.mapping filter=lfs diff=lfs merge=lfs -text
+bartlesville_hec_lime_v5_interfaces_material_ids.h5 filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,20 @@
+PFLOTRAN material HDF5 validation passed
+node_file=bartlesville_hec_lime_v5_interfaces.1.node
+material_file=bartlesville_hec_lime_v5_interfaces_materials.txt
+h5_file=bartlesville_hec_lime_v5_interfaces_material_ids.h5
+node_count=140456
+cell_id_mapping=tetgen_node_file_row_order_to_contiguous_1_based
+tetgen_node_id_min=1
+tetgen_node_id_max=140456
+material_ids_sha256=201f3d4b975de6a8177d20b389f4f335a25ae992fe29f5ce1b2defd91e89fd26
+dataset_cell_ids=/Materials/Cell Ids
+dataset_material_ids=/Materials/Material Ids
+hdf5_integer_dtype=int64
+hdf5_compression=none
+ugi_file=bartlesville_hec_lime_v5_interfaces.ugi
+ugi_element_count=802245
+ugi_node_count=140456
+ugi_max_node_coordinate_difference_m=5.0022208597511053e-10
+geometry_json=bartlesville_hec_lime_v5_interfaces_geometry.json
+expected_material_ids=1,2,3,4,5,6,7,8,9,10
+material_distribution=1:43418,2:29992,3:14569,4:44473,5:472,6:84,7:42,8:42,9:42,10:7322

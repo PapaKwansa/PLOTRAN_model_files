@@ -1,0 +1,100 @@
+{
+  "status": "passed",
+  "deck": "/home/kwesi/yaomesh/Pflotran_files_codes_nav5_release/north_avant_v5_twoway_production_96h_final.in",
+  "manifest": "/home/kwesi/yaomesh/Pflotran_files_codes_nav5_release/north_avant_v5_runtime_manifest.txt",
+  "counts": {
+    "flow_cells": 140456,
+    "flow_connections": 959340,
+    "mechanics_vertices": 140456,
+    "tetrahedra": 802245,
+    "mapping_rows": 140456
+  },
+  "mapping_identity": true,
+  "material_ids": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "vset_counts": {
+    "overburden.vset": 43418,
+    "shallow_limestone.vset": 7322,
+    "bartlesville_sand.vset": 29992,
+    "basal_layer.vset": 14569,
+    "underburden.vset": 44473,
+    "hec.vset": 472,
+    "injection_borehole.vset": 84,
+    "strainmeter_sensors.vset": 126,
+    "AVN2.vset": 42,
+    "AVN87.vset": 42,
+    "AVN31.vset": 42,
+    "top.vset": 6561,
+    "bottom.vset": 6561,
+    "north.vset": 1053,
+    "south.vset": 1053,
+    "east.vset": 1053,
+    "west.vset": 1053
+  },
+  "external_boundary_reports": {
+    "boundary_ex_v5/top.ex": {
+      "records": 6561,
+      "area_sum_m2": 99999999.99999988
+    },
+    "boundary_ex_v5/bottom.ex": {
+      "records": 6561,
+      "area_sum_m2": 99999999.99999988
+    },
+    "boundary_ex_v5/north.ex": {
+      "records": 1053,
+      "area_sum_m2": 15350000.0
+    },
+    "boundary_ex_v5/south.ex": {
+      "records": 1053,
+      "area_sum_m2": 15350000.0
+    },
+    "boundary_ex_v5/east.ex": {
+      "records": 1053,
+      "area_sum_m2": 15350000.0
+    },
+    "boundary_ex_v5/west.ex": {
+      "records": 1053,
+      "area_sum_m2": 15350000.0
+    }
+  },
+  "deck_references": [
+    "AVN2.vset",
+    "AVN31.vset",
+    "AVN87.vset",
+    "bartlesville_hec_lime_v5_interfaces.ugi",
+    "bartlesville_hec_lime_v5_interfaces_material_ids.h5",
+    "bartlesville_hec_lime_v5_interfaces_median.mapping",
+    "bartlesville_hec_lime_v5_interfaces_median.uge",
+    "bartlesville_sand.vset",
+    "basal_layer.vset",
+    "bottom.vset",
+    "boundary_ex_v5/bottom.ex",
+    "boundary_ex_v5/east.ex",
+    "boundary_ex_v5/north.ex",
+    "boundary_ex_v5/south.ex",
+    "boundary_ex_v5/top.ex",
+    "boundary_ex_v5/west.ex",
+    "east.vset",
+    "hec.vset",
+    "injection_borehole.vset",
+    "north.vset",
+    "overburden.vset",
+    "shallow_limestone.vset",
+    "south.vset",
+    "strainmeter_sensors.vset",
+    "top.vset",
+    "underburden.vset",
+    "west.vset"
+  ],
+  "checksums_file": "/home/kwesi/yaomesh/Pflotran_files_codes_nav5_release/validation/release_audit/production_bundle_SHA256SUMS"
+}

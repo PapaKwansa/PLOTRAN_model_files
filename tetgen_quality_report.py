@@ -110,7 +110,7 @@ def tetra_circumradius(points: Sequence[np.ndarray]) -> float:
     degenerate tets.
     """
     a, b, c, d = points
-    m = np.vstack([b - a, c - a, d - a]).T
+    m = np.vstack([b - a, c - a, d - a])
     rhs = 0.5 * np.array([
         float(np.dot(b, b) - np.dot(a, a)),
         float(np.dot(c, c) - np.dot(a, a)),
