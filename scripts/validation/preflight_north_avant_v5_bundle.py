@@ -5,7 +5,7 @@ Preflight a North Avant V5 PFLOTRAN runtime bundle before Palmetto transfer.
 Checks:
   * every runtime-manifest file exists and is nonempty;
   * every file path referenced by the deck exists;
-  * deck is TWO_WAY_COUPLED with explicit rate interpolation and checkpointing;
+  * deck is TWO_WAY_COUPLED with explicit rate interpolation and no active mid-run checkpointing;
   * UGE, UGI, mapping, and material-HDF5 counts agree;
   * all vset IDs are valid;
   * external-boundary EX records have positive areas;
@@ -195,7 +195,6 @@ def main() -> int:
         "controlled timestep growth": "TIMESTEP_MAXIMUM_GROWTH_FACTOR 1.2d0",
         "post-cut hold": "NUM_STEPS_AFTER_TS_CUT 10",
         "reduced coupling interval": "COUPLING_TIMESTEP_SIZE 5.d-3 hour",
-        "checkpointing": "CHECKPOINT",
         "median UGE": "bartlesville_hec_lime_v5_interfaces_median.uge",
         "canonical UGI": "bartlesville_hec_lime_v5_interfaces.ugi",
         "validated mapping": "bartlesville_hec_lime_v5_interfaces_median.mapping",
@@ -204,6 +203,43 @@ def main() -> int:
     absent = [label for label, token in required_tokens.items() if token not in deck_text]
     if absent:
         raise RuntimeError("Deck is missing required features: " + ", ".join(absent))
+
+    # NAV5 NO-MIDRUN-CHECKPOINT CONTRACT
+    active_deck_text = "\n".join(
+        raw.split("#", 1)[0]
+        for raw in deck_text.splitlines()
+    )
+
+    if re.search(
+        r"(?m)^[ \t]*CHECKPOINT[ \t]*$",
+        active_deck_text,
+    ):
+        raise RuntimeError(
+            "Deck contains an active CHECKPOINT block. "
+            "Parallel HDF5 checkpointing is disabled until separately validated."
+        )
+
+    geomech_output = re.search(
+        r"(?ms)"
+        r"^[ \t]*GEOMECHANICS_OUTPUT[ \t]*$"
+        r".*?"
+        r"^[ \t]*END[ \t]*$",
+        active_deck_text,
+    )
+
+    if geomech_output is None:
+        raise RuntimeError(
+            "Deck is missing GEOMECHANICS_OUTPUT."
+        )
+
+    if re.search(
+        r"(?m)^[ \t]*TIMES[ \t]+",
+        geomech_output.group(0),
+    ):
+        raise RuntimeError(
+            "GEOMECHANICS_OUTPUT must not contain explicit TIMES "
+            "during the current stability phase."
+        )
 
     references = referenced_paths(deck_text)
     missing_refs = [str(path) for path in sorted(references) if not path.is_file()]

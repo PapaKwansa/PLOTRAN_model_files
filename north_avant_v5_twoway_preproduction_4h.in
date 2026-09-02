@@ -4,8 +4,8 @@
 # Purpose
 # -------
 # This gate exercises the final V5 mesh, two-way poromechanical coupling,
-# the first two pump transitions, staggered restart checkpoints, aligned
-# flow/geomechanics output, and the Palmetto production runtime.
+# the first two pump transitions, flow HDF5 snapshots, default
+# geomechanics HDF5 output, and the Palmetto production runtime.
 #
 # Volume-preserving injection history
 # -----------------------------------
@@ -35,7 +35,7 @@
 # * Timestep cuts are stronger and timestep regrowth is capped.
 # * Newton uses the PETSc trust-region method (SNES_TYPE NTR).
 # * The flow/geomechanics exchange interval is reduced to 0.005 h.
-# * Checkpoints are staggered away from rate, snapshot, and final-time events.
+# * Mid-run checkpoints are disabled while the parallel restart writer is investigated.
 # ============================================================
 
 SIMULATION
@@ -56,12 +56,6 @@ SIMULATION
     /
   /
 
-  CHECKPOINT
-    # Stagger restart writes away from pump, HDF5-output, and final-time events.
-    TIMES hour 3.d-1 2.5d0 3.7d0
-    FORMAT HDF5
-    TIME_UNITS hour
-  /
 END
 
 # ============================================================
@@ -255,7 +249,7 @@ OUTPUT
   SCREEN PERIODIC 20
   TIME_UNITS hour
   SNAPSHOT_FILE
-    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 4.5d-1 5.d-1 5.5d-1 1.d0 2.d0 2.9d0 3.d0 3.1d0 3.5d0 4.d0
+    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 4.4d-1 5.6d-1 1.d0 2.d0 2.89d0 3.11d0 3.5d0 4.d0
     FORMAT HDF5
     VARIABLES
       LIQUID_PRESSURE
@@ -268,7 +262,7 @@ OUTPUT
   /
   # Compact global water-balance record for production QA.
   CONSERVATION_FILE
-    PERIODIC TIME 1.d-1 hour
+    PERIODIC TIME 1.d0 hour
   /
 END
 
@@ -672,9 +666,8 @@ GEOMECHANICS
 
   # Side rollers suppress rigid-body horizontal motion, the bottom is fixed
   # vertically, and the top surface remains traction-free.
-  # Explicit times keep flow and geomechanics visualization products aligned.
+  # No explicit TIMES are requested for geomechanics during this stability phase.
   GEOMECHANICS_OUTPUT
-    TIMES hour 1.d-2 5.d-2 1.d-1 2.5d-1 4.5d-1 5.d-1 5.5d-1 1.d0 2.d0 2.9d0 3.d0 3.1d0 3.5d0 4.d0
     FORMAT HDF5
   END
 

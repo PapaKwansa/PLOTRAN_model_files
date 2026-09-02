@@ -378,13 +378,49 @@ def check_deck(audit: Audit, path: Path, production: bool) -> None:
         "shallow_limestone",
         "GEOMECHANICS_OUTPUT",
         "FORMAT HDF5",
-        "CHECKPOINT",
     ]
     missing = [token for token in tokens if token not in text]
     if missing:
         audit.fail(f"deck:{label}", "missing tokens: " + ", ".join(missing))
     else:
-        audit.pass_(f"deck:{label}", f"two-way, LINEAR ramp schedule, stabilized controls, {expected_final}, V5 paths, outputs, checkpoints")
+        audit.pass_(f"deck:{label}", f"two-way, LINEAR ramp schedule, stabilized controls, {expected_final}, V5 paths, flow snapshots, default geomechanics output, checkpoints disabled")
+
+    # NAV5 NO-MIDRUN-CHECKPOINT CONTRACT
+    active_text = "\n".join(
+        raw.split("#", 1)[0]
+        for raw in text.splitlines()
+    )
+
+    if re.search(
+        r"(?m)^[ \t]*CHECKPOINT[ \t]*$",
+        active_text,
+    ):
+        audit.fail(
+            f"deck:{label}:checkpoint",
+            "contains an active CHECKPOINT block; parallel HDF5 restart writes are disabled",
+        )
+
+    geomech_output = re.search(
+        r"(?ms)"
+        r"^[ \t]*GEOMECHANICS_OUTPUT[ \t]*$"
+        r".*?"
+        r"^[ \t]*END[ \t]*$",
+        active_text,
+    )
+
+    if geomech_output is None:
+        audit.fail(
+            f"deck:{label}:geomechanics-output",
+            "GEOMECHANICS_OUTPUT block is missing",
+        )
+    elif re.search(
+        r"(?m)^[ \t]*TIMES[ \t]+",
+        geomech_output.group(0),
+    ):
+        audit.fail(
+            f"deck:{label}:geomechanics-times",
+            "GEOMECHANICS_OUTPUT contains explicit TIMES",
+        )
 
     if "ONE_WAY_COUPLED" in text:
         audit.fail(f"deck:{label}:oneway", "contains ONE_WAY_COUPLED")
