@@ -66,6 +66,10 @@ do
 done
 
 module purge
+ANACONDA_MODULE="${ANACONDA_MODULE:-anaconda3/2023.09-0}"
+module load "$ANACONDA_MODULE"
+export PYTHONNOUSERSITE=1
+export MPLBACKEND=Agg
 
 export MPLBACKEND=Agg
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"

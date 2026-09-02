@@ -74,3 +74,12 @@ north_avant_v5_release_prep_tools*.tar.gz*
 Thumbs.db
 
 # END NORTH AVANT V5 RELEASE
+
+# BEGIN PALMETTO TRANSIENT PRODUCTS
+NAV5-*.out
+NAV5-*.err
+pflotran_runtime_ldd.txt
+validation/palmetto_preflight/
+palmetto_*preflight*.json
+palmetto_*SHA256SUMS
+# END PALMETTO TRANSIENT PRODUCTS

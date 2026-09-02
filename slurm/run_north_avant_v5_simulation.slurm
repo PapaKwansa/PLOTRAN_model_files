@@ -48,6 +48,8 @@ RESULT_BASE="${RESULT_BASE:-/home/harhin/pflotran_results/north_avant_v5}"
 # Production-tested PETSc stack.
 export PETSC_DIR="${PETSC_DIR:-/home/harhin/PFLOTRAN/petsc}"
 export PETSC_ARCH="${PETSC_ARCH:-arch-linux-c-opt}"
+PFLOTRAN_BIN="${PFLOTRAN_BIN:-/home/harhin/PFLOTRAN/petsc/pflotran/src/pflotran/pflotran}"
+export PFLOTRAN_BIN
 
 # Module names may be overridden at submission if Palmetto changes spelling.
 GCC_MODULE="${GCC_MODULE:-gcc}"
@@ -57,13 +59,13 @@ HDF5_MODULE="${HDF5_MODULE:-hdf5/1.14.3}"
 # Palmetto recommends srun for Slurm-integrated MPI launches. Set
 # MPI_LAUNCHER=mpiexec only if the locally built OpenMPI executable is not
 # compatible with srun on the selected nodes.
-MPI_LAUNCHER="${MPI_LAUNCHER:-srun}"
+MPI_LAUNCHER="${MPI_LAUNCHER:-mpiexec}"
 
 # Copy newly completed checkpoint files to persistent storage during long runs.
 CHECKPOINT_SYNC_SECONDS="${CHECKPOINT_SYNC_SECONDS:-600}"
 
 # Set to 1 for a release run after the source tree has been cleaned and committed.
-REQUIRE_CLEAN_GIT="${REQUIRE_CLEAN_GIT:-0}"
+REQUIRE_CLEAN_GIT="${REQUIRE_CLEAN_GIT:-1}"
 
 # Initialized early so error/signal traps are safe before scratch staging.
 RESULT_DIR=""
@@ -185,15 +187,31 @@ record_git_state() {
     return
   fi
 
-  git -C "$git_root" rev-parse HEAD > "$RESULT_DIR/git_commit.txt"
-  git -C "$git_root" status --short --untracked-files=all \
+  git -C "$git_root" rev-parse HEAD \
+    > "$RESULT_DIR/git_commit.txt"
+
+  # Record everything for provenance.
+  git -C "$git_root" status \
+    --short \
+    --untracked-files=all \
     > "$RESULT_DIR/git_status_at_submission.txt"
 
-  if [[ -s "$RESULT_DIR/git_status_at_submission.txt" ]]; then
-    log "WARNING: source Git checkout is not clean."
+  # Only tracked or staged source changes invalidate the production run.
+  # Untracked Slurm logs and preflight products are recorded above but do
+  # not alter the committed deck, mesh, mapping, or postprocessing code.
+  git -C "$git_root" status \
+    --short \
+    --untracked-files=no \
+    > "$RESULT_DIR/git_tracked_status_at_submission.txt"
+
+  if [[ -s "$RESULT_DIR/git_tracked_status_at_submission.txt" ]]; then
+    log "WARNING: tracked source files differ from the committed release."
+
     if [[ "$REQUIRE_CLEAN_GIT" == "1" ]]; then
-      die "REQUIRE_CLEAN_GIT=1, but the source checkout has changes."
+      die "REQUIRE_CLEAN_GIT=1 and tracked source files have changes."
     fi
+  elif [[ -s "$RESULT_DIR/git_status_at_submission.txt" ]]; then
+    log "NOTE: untracked files exist; recorded for provenance but not used."
   fi
 }
 
