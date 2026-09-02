@@ -286,6 +286,120 @@ def compatible_nodal_array(
     return values
 
 
+def read_geomechanics_coordinates(
+    h5: h5py.File,
+) -> np.ndarray:
+    """
+    Read authoritative PFLOTRAN node coordinates.
+
+    Prefer /Domain/X, /Domain/Y, and /Domain/Z because the current
+    geomechanics HDF5 writer can leave /Domain/Vertices zero-filled.
+    """
+    required = ("/Domain/X", "/Domain/Y", "/Domain/Z")
+
+    if all(path in h5 for path in required):
+        x = np.asarray(
+            h5["/Domain/X"][...],
+            dtype=np.float64,
+        ).reshape(-1)
+
+        y = np.asarray(
+            h5["/Domain/Y"][...],
+            dtype=np.float64,
+        ).reshape(-1)
+
+        z = np.asarray(
+            h5["/Domain/Z"][...],
+            dtype=np.float64,
+        ).reshape(-1)
+
+        if not (x.size == y.size == z.size):
+            raise RuntimeError(
+                "PFLOTRAN coordinate arrays have inconsistent lengths: "
+                f"X={x.size:,}, Y={y.size:,}, Z={z.size:,}"
+            )
+
+        if not (
+            np.all(np.isfinite(x))
+            and np.all(np.isfinite(y))
+            and np.all(np.isfinite(z))
+        ):
+            raise RuntimeError(
+                "PFLOTRAN /Domain/X/Y/Z contains NaN or infinity"
+            )
+
+        points = np.column_stack((x, y, z))
+
+        if not np.any(np.abs(points) > 0.0):
+            raise RuntimeError(
+                "PFLOTRAN /Domain/X/Y/Z is zero-filled"
+            )
+
+        if "/Domain/Vertices" in h5:
+            vertices = np.asarray(
+                h5["/Domain/Vertices"][...],
+                dtype=np.float64,
+            )
+
+            if (
+                vertices.shape == points.shape
+                and np.allclose(
+                    vertices,
+                    0.0,
+                    atol=0.0,
+                    rtol=0.0,
+                )
+            ):
+                print(
+                    "PFLOTRAN geometry: /Domain/Vertices is zero-filled; "
+                    "using /Domain/X/Y/Z."
+                )
+            else:
+                print(
+                    "PFLOTRAN geometry: using /Domain/X/Y/Z."
+                )
+        else:
+            print(
+                "PFLOTRAN geometry: using /Domain/X/Y/Z."
+            )
+
+        return points
+
+    if "/Domain/Vertices" not in h5:
+        raise RuntimeError(
+            "Geomechanics HDF5 contains neither /Domain/X,/Y,/Z "
+            "nor /Domain/Vertices"
+        )
+
+    vertices = np.asarray(
+        h5["/Domain/Vertices"][...],
+        dtype=np.float64,
+    )
+
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise RuntimeError(
+            f"Unexpected /Domain/Vertices shape: {vertices.shape}"
+        )
+
+    if not np.all(np.isfinite(vertices)):
+        raise RuntimeError(
+            "PFLOTRAN /Domain/Vertices contains NaN or infinity"
+        )
+
+    if not np.any(np.abs(vertices) > 0.0):
+        raise RuntimeError(
+            "PFLOTRAN /Domain/Vertices is zero-filled and "
+            "/Domain/X/Y/Z are unavailable"
+        )
+
+    print(
+        "PFLOTRAN geometry: using /Domain/Vertices "
+        "(validated fallback)."
+    )
+
+    return vertices
+
+
 def discover_time_groups(
     h5: h5py.File,
     node_count: int,
@@ -874,15 +988,7 @@ def main() -> int:
     axial_series: dict[str, dict[str, list[float]]] = {}
 
     with h5py.File(h5_path, "r") as h5:
-        if "/Domain/Vertices" not in h5:
-            raise RuntimeError(f"{h5_path}: missing /Domain/Vertices")
-
-        vertices = np.asarray(h5["/Domain/Vertices"][...], dtype=np.float64)
-        if vertices.ndim != 2 or vertices.shape[1] != 3:
-            raise RuntimeError(
-                f"Unexpected /Domain/Vertices shape: {vertices.shape}"
-            )
-
+        vertices = read_geomechanics_coordinates(h5)
         node_count = int(vertices.shape[0])
         regions: list[RegionDefinition] = []
 
