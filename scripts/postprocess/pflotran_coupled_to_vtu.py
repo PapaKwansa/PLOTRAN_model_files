@@ -351,6 +351,114 @@ def find_field_key(arrays: dict[str, np.ndarray], requested: str) -> str | None:
     return None
 
 
+def read_geomechanics_coordinates(
+    h5: h5py.File,
+    expected_count: int,
+) -> np.ndarray:
+    """
+    Read PFLOTRAN geomechanics coordinates.
+
+    Current PFLOTRAN output stores the authoritative coordinates in
+    /Domain/X, /Domain/Y, and /Domain/Z.  Some files also contain
+    /Domain/Vertices, but that dataset may be present and zero-filled.
+    Prefer X/Y/Z and use Vertices only as a validated fallback.
+    """
+    coordinate_paths = ("/Domain/X", "/Domain/Y", "/Domain/Z")
+
+    if all(path in h5 for path in coordinate_paths):
+        x = np.asarray(h5["/Domain/X"][...], dtype=np.float64).reshape(-1)
+        y = np.asarray(h5["/Domain/Y"][...], dtype=np.float64).reshape(-1)
+        z = np.asarray(h5["/Domain/Z"][...], dtype=np.float64).reshape(-1)
+
+        if not (
+            x.size == expected_count
+            and y.size == expected_count
+            and z.size == expected_count
+        ):
+            raise RuntimeError(
+                "PFLOTRAN /Domain/X/Y/Z coordinate lengths do not match "
+                f"the expected mechanics vertex count {expected_count:,}: "
+                f"X={x.size:,}, Y={y.size:,}, Z={z.size:,}"
+            )
+
+        if not (
+            np.all(np.isfinite(x))
+            and np.all(np.isfinite(y))
+            and np.all(np.isfinite(z))
+        ):
+            raise RuntimeError(
+                "PFLOTRAN /Domain/X/Y/Z contains NaN or infinity"
+            )
+
+        points = np.column_stack((x, y, z))
+
+        if not np.any(np.abs(points) > 0.0):
+            raise RuntimeError(
+                "PFLOTRAN /Domain/X/Y/Z is entirely zero-filled"
+            )
+
+        vertices = None
+        if "/Domain/Vertices" in h5:
+            candidate = np.asarray(
+                h5["/Domain/Vertices"][...],
+                dtype=np.float64,
+            )
+            if candidate.shape == points.shape:
+                vertices = candidate
+
+        if vertices is not None and np.allclose(
+            vertices,
+            0.0,
+            atol=0.0,
+            rtol=0.0,
+        ):
+            print(
+                "PFLOTRAN geometry: /Domain/Vertices is zero-filled; "
+                "using /Domain/X/Y/Z."
+            )
+        else:
+            print(
+                "PFLOTRAN geometry: using /Domain/X/Y/Z."
+            )
+
+        return points
+
+    if "/Domain/Vertices" not in h5:
+        raise RuntimeError(
+            "Geomechanics HDF5 contains neither /Domain/X,/Y,/Z "
+            "nor /Domain/Vertices"
+        )
+
+    points = np.asarray(
+        h5["/Domain/Vertices"][...],
+        dtype=np.float64,
+    )
+
+    if points.shape != (expected_count, 3):
+        raise RuntimeError(
+            "Unexpected /Domain/Vertices shape: "
+            f"{points.shape}; expected {(expected_count, 3)}"
+        )
+
+    if not np.all(np.isfinite(points)):
+        raise RuntimeError(
+            "PFLOTRAN /Domain/Vertices contains NaN or infinity"
+        )
+
+    if not np.any(np.abs(points) > 0.0):
+        raise RuntimeError(
+            "PFLOTRAN /Domain/Vertices is zero-filled and "
+            "/Domain/X/Y/Z are unavailable"
+        )
+
+    print(
+        "PFLOTRAN geometry: using /Domain/Vertices "
+        "(validated fallback)."
+    )
+
+    return points
+
+
 def write_pvd(path: Path, records: list[tuple[float, Path]]) -> None:
     vtkfile = ET.Element(
         "VTKFile",
@@ -422,17 +530,31 @@ def main() -> int:
     manifest_times: list[dict[str, object]] = []
 
     with h5py.File(geomech_path, "r") as geomech_h5, h5py.File(flow_path, "r") as flow_h5:
-        if "/Domain/Vertices" not in geomech_h5:
-            raise RuntimeError(f"{geomech_path}: missing /Domain/Vertices")
-        h5_points = np.asarray(geomech_h5["/Domain/Vertices"][...], dtype=float)
+        h5_points = read_geomechanics_coordinates(
+            geomech_h5,
+            mechanics_count,
+        )
+
         if h5_points.shape != ugi_points.shape:
             raise RuntimeError(
-                f"UGI/geomechanics vertex shape mismatch: {ugi_points.shape} vs {h5_points.shape}"
+                "UGI/geomechanics coordinate shape mismatch: "
+                f"{ugi_points.shape} vs {h5_points.shape}"
             )
-        maximum_difference = float(np.max(np.abs(h5_points - ugi_points)))
-        print(f"Maximum UGI/HDF5 vertex difference: {maximum_difference:.6e} m")
+
+        maximum_difference = float(
+            np.max(np.abs(h5_points - ugi_points))
+        )
+
+        print(
+            "Maximum UGI/HDF5 coordinate difference: "
+            f"{maximum_difference:.6e} m"
+        )
+
         if maximum_difference > args.coordinate_atol:
-            raise RuntimeError("UGI/geomechanics coordinates exceed tolerance")
+            raise RuntimeError(
+                "UGI/geomechanics coordinates exceed tolerance. "
+                "Check node ordering or coordinate convention."
+            )
 
         # Infer flow-cell count from compatible time datasets, then validate mapping.
         possible_counts: list[int] = []
