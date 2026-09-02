@@ -440,15 +440,11 @@ mkdir -p "$RESULT_DIR"
 
 record_git_state
 
-if (( SLURM_NNODES == 1 )) && [[ -n "${TMPDIR:-}" ]] && [[ -d "$TMPDIR" ]]; then
-  # Fast node-local scratch for a one-node job.
-  WORK_DIR="$TMPDIR/north_avant_v5_${SLURM_JOB_ID}"
-  WORK_KIND="node_local_tmpdir"
-else
-  # Shared scratch is required for a multi-node job.
-  WORK_DIR="/scratch/$USER/north_avant_v5/${SLURM_JOB_ID}_${INPUT_PREFIX}"
-  WORK_KIND="shared_scratch"
-fi
+# Hydra creates Slurm job steps whose working directory must be visible to
+# every launched process. Use shared scratch even for a one-node run rather
+# than a generic /tmp directory that a new Slurm step may not see.
+WORK_DIR="/scratch/$USER/north_avant_v5/${SLURM_JOB_ID}_${INPUT_PREFIX}"
+WORK_KIND="shared_scratch"
 
 mkdir -p "$WORK_DIR"
 

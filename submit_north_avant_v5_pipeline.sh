@@ -88,6 +88,16 @@ done
   exit 2
 }
 
+# PFLOTRAN VERSION-COMPATIBILITY GATE
+# The frozen Palmetto PFLOTRAN executable does not support this newer
+# SNAPSHOT_FILE option. Reject it before consuming a Slurm allocation.
+if grep -nE   '^[[:space:]]*EXTEND_HDF5_TIME_FORMAT([[:space:]]|$)'   "$SOURCE_DIR/${INPUT_PREFIX}.in" >&2
+then
+  echo "ERROR: selected deck contains an unsupported PFLOTRAN keyword." >&2
+  echo "Remove EXTEND_HDF5_TIME_FORMAT before submission." >&2
+  exit 2
+fi
+
 simulation_job_id="$(
   sbatch --parsable \
     --job-name="$SIM_JOB_NAME" \
