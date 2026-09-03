@@ -13,10 +13,12 @@ statistics over all unique vset nodes and writes:
 * one combined wide CSV and one CSV per region;
 * one long-form strain-component CSV;
 * one compact VTU per time and one PVD time-series index for ParaView;
-* one publication-quality figure per region with all six independent strain
-  tensor components on one set of axes;
+* publication-quality strain figures per region in the requested display units;
 * optional displacement plots per region;
-* optional comparison plots showing one strain component across all regions;
+* high-quality all-region strain comparison in nanostrain;
+* optional injector pressure and pressure-change figures when a flow HDF5 and
+  mapping file are supplied;
+* comparison plots showing one strain component across all regions;
 * a JSON manifest describing inputs, aggregation, plots, and optional axes.
 
 The six tensor components plotted together are:
@@ -438,6 +440,267 @@ def discover_time_groups(
     return sorted(unique.values(), key=lambda item: (item.value, item.hdf5_path))
 
 
+def load_group_arrays(
+    group: h5py.Group,
+    node_count: int,
+    prefix: str = "",
+) -> tuple[dict[str, np.ndarray], dict[str, str]]:
+    """Load numeric nodal/cell arrays from an HDF5 time group."""
+    arrays: dict[str, np.ndarray] = {}
+    names: dict[str, str] = {}
+    for dataset_name, dataset in group.items():
+        if not isinstance(dataset, h5py.Dataset):
+            continue
+        values = compatible_nodal_array(dataset, node_count)
+        if values is None:
+            continue
+        output_name = prefix + safe_name(dataset_name)
+        base_name = output_name
+        suffix = 2
+        while output_name in arrays:
+            output_name = f"{base_name}_{suffix}"
+            suffix += 1
+        arrays[output_name] = values
+        names[dataset_name] = output_name
+    return arrays, names
+
+
+def infer_dataset_count(h5: h5py.File) -> int:
+    """Infer the dominant leading dimension of numeric HDF5 datasets."""
+    counts: list[int] = []
+
+    def visitor(_name: str, obj: h5py.Group | h5py.Dataset) -> None:
+        if not isinstance(obj, h5py.Dataset):
+            return
+        if obj.ndim not in {1, 2} or not obj.shape:
+            return
+        leading = int(obj.shape[0])
+        if leading > 1:
+            counts.append(leading)
+
+    h5.visititems(visitor)
+    if not counts:
+        raise RuntimeError("Could not infer a numeric dataset size from HDF5")
+    unique, frequencies = np.unique(np.asarray(counts, dtype=np.int64), return_counts=True)
+    return int(unique[int(np.argmax(frequencies))])
+
+
+def read_mapping(
+    path: Path,
+    flow_count: int,
+    mechanics_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    data = np.loadtxt(path, dtype=np.int64)
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+    if data.shape[1] < 2:
+        raise RuntimeError(f"{path}: expected at least two mapping columns")
+    flow_ids = data[:, 0]
+    mechanics_ids = data[:, 1]
+    if data.shape[0] != mechanics_count:
+        raise RuntimeError(
+            f"{path}: expected {mechanics_count:,} mapping rows, "
+            f"found {data.shape[0]:,}"
+        )
+    if len(np.unique(flow_ids)) != len(flow_ids):
+        raise RuntimeError(f"{path}: duplicate flow IDs")
+    if len(np.unique(mechanics_ids)) != len(mechanics_ids):
+        raise RuntimeError(f"{path}: duplicate mechanics IDs")
+    if flow_ids.min() < 1 or flow_ids.max() > flow_count:
+        raise RuntimeError(f"{path}: flow IDs outside 1..{flow_count}")
+    if mechanics_ids.min() < 1 or mechanics_ids.max() > mechanics_count:
+        raise RuntimeError(f"{path}: mechanics IDs outside 1..{mechanics_count}")
+    return flow_ids - 1, mechanics_ids - 1
+
+
+def map_flow_array(
+    values: np.ndarray,
+    flow_ids: np.ndarray,
+    mechanics_ids: np.ndarray,
+    mechanics_count: int,
+) -> np.ndarray:
+    mapped = np.empty(mechanics_count, dtype=values.dtype)
+    assigned = np.zeros(mechanics_count, dtype=bool)
+    mapped[mechanics_ids] = values[flow_ids]
+    assigned[mechanics_ids] = True
+    if not np.all(assigned):
+        missing = np.flatnonzero(~assigned)[:10] + 1
+        raise RuntimeError(
+            f"Mapping does not assign mechanics vertices {missing.tolist()}"
+        )
+    return mapped
+
+
+def find_flow_field(arrays: Mapping[str, np.ndarray], requested: str) -> np.ndarray | None:
+    """Find a flow field by base name despite unit suffixes and Flow_ prefix."""
+    target = normalized_name(requested)
+    for name, values in arrays.items():
+        normalized = normalized_name(name)
+        candidates = {normalized, normalized.removeprefix("flow_")}
+        for candidate in candidates:
+            if candidate == target or candidate.startswith(target + "_"):
+                return np.asarray(values)
+    return None
+
+
+def resolve_pressure_field(arrays: Mapping[str, np.ndarray]) -> tuple[np.ndarray | None, str | None]:
+    """Find the liquid-pressure field with robust PFLOTRAN naming support."""
+    candidates = (
+        "Flow_Liquid_Pressure",
+        "Liquid_Pressure",
+        "Pressure",
+        "Flow_Pressure",
+    )
+    for requested in candidates:
+        values = find_flow_field(arrays, requested)
+        if values is not None:
+            for name in arrays:
+                if np.shares_memory(np.asarray(arrays[name]), np.asarray(values)):
+                    return np.asarray(values), name
+            return np.asarray(values), requested
+    return None, None
+
+
+def tensor_strain_norm_values(arrays: Mapping[str, np.ndarray]) -> np.ndarray:
+    """Return Frobenius norm of the symmetric small-strain tensor."""
+    components = {
+        name: find_array(arrays, name)
+        for name, _ in STRAIN_COMPONENTS
+    }
+    missing = [name for name, value in components.items() if value is None]
+    if missing:
+        raise RuntimeError(
+            "Cannot calculate strain-tensor norm; missing components: "
+            + ", ".join(missing)
+        )
+    exx = np.asarray(components["strain_xx"], dtype=float)
+    eyy = np.asarray(components["strain_yy"], dtype=float)
+    ezz = np.asarray(components["strain_zz"], dtype=float)
+    exy = np.asarray(components["strain_xy"], dtype=float)
+    eyz = np.asarray(components["strain_yz"], dtype=float)
+    ezx = np.asarray(components["strain_zx"], dtype=float)
+    return np.sqrt(
+        exx * exx
+        + eyy * eyy
+        + ezz * ezz
+        + 2.0 * (exy * exy + eyz * eyz + ezx * ezx)
+    )
+
+
+def plot_region_pressure(
+    region: RegionDefinition,
+    times: np.ndarray,
+    pressure: Mapping[str, Sequence[float]],
+    output_base: Path,
+    formats: Sequence[str],
+    dpi: int,
+) -> list[str]:
+    """Plot injector/region pressure and pressure change as publication figures."""
+    pressure_mean = np.asarray(pressure["mean"], dtype=float)
+    pressure_change = np.asarray(pressure["change_mean"], dtype=float)
+
+    with plt.rc_context(PLOT_RC):
+        fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
+        markevery = max(1, len(times) // 10)
+        ax.plot(
+            times,
+            pressure_change / 1.0e6,
+            label=r"$\Delta P$",
+            linestyle="-",
+            marker="o",
+            markevery=markevery,
+            linewidth=2.4,
+        )
+        ax.axhline(0.0, linewidth=0.9, alpha=0.65)
+        ax.axvline(19.0, linewidth=1.0, linestyle="--", alpha=0.7)
+        ax.text(19.0, 0.98, "Injection stops", transform=ax.get_xaxis_transform(),
+                ha="right", va="top", fontsize=9)
+        ax.set_xlabel("Time [h]")
+        ax.set_ylabel("Mean pressure change [MPa]")
+        ax.set_title(
+            f"{region.name}: pore-pressure response\n"
+            f"mean over {region.indices.size:,} vset nodes"
+        )
+        ax.grid(True)
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=8))
+        ax.legend(loc="best", frameon=True)
+        outputs = save_figure(fig, output_base, formats, dpi)
+
+    # Also provide a raw-pressure version for reference when the baseline is useful.
+    with plt.rc_context(PLOT_RC):
+        fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
+        markevery = max(1, len(times) // 10)
+        ax.plot(
+            times,
+            pressure_mean / 1.0e6,
+            label="Mean liquid pressure",
+            linestyle="-",
+            marker="s",
+            markevery=markevery,
+            linewidth=2.2,
+        )
+        ax.axvline(19.0, linewidth=1.0, linestyle="--", alpha=0.7)
+        ax.text(19.0, 0.98, "Injection stops", transform=ax.get_xaxis_transform(),
+                ha="right", va="top", fontsize=9)
+        ax.set_xlabel("Time [h]")
+        ax.set_ylabel("Mean liquid pressure [MPa]")
+        ax.set_title(
+            f"{region.name}: mean liquid pressure\n"
+            f"mean over {region.indices.size:,} vset nodes"
+        )
+        ax.grid(True)
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=8))
+        ax.legend(loc="best", frameon=True)
+        outputs.extend(save_figure(fig, output_base.with_name(output_base.name + "_absolute"), formats, dpi))
+
+    return outputs
+
+
+def plot_region_strain_norm_across_regions(
+    regions: Sequence[RegionDefinition],
+    times: np.ndarray,
+    all_series: Mapping[str, Mapping[str, Mapping[str, Sequence[float]]]],
+    output_base: Path,
+    formats: Sequence[str],
+    dpi: int,
+) -> list[str]:
+    """Compare scalar strain-tensor magnitude across all requested regions."""
+    scale = STRAIN_UNIT_OPTIONS["nanostrain"][0]
+    with plt.rc_context(PLOT_RC):
+        fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
+        markevery = max(1, len(times) // 10)
+        plotted = 0
+        for index, region in enumerate(regions):
+            field = all_series[region.name].get("strain_tensor_norm")
+            if field is None:
+                continue
+            mean = np.asarray(field["mean"], dtype=float) * scale
+            ax.plot(
+                times,
+                mean,
+                label=region.name,
+                linestyle=LINE_STYLES[index % len(LINE_STYLES)],
+                marker=MARKERS[index % len(MARKERS)],
+                markevery=markevery,
+                linewidth=2.2,
+            )
+            plotted += 1
+        if plotted == 0:
+            plt.close(fig)
+            return []
+        ax.axhline(0.0, linewidth=0.8, alpha=0.6)
+        ax.axvline(19.0, linewidth=1.0, linestyle="--", alpha=0.7)
+        ax.text(19.0, 0.98, "Injection stops", transform=ax.get_xaxis_transform(),
+                ha="right", va="top", fontsize=9)
+        ax.set_xlabel("Time [h]")
+        ax.set_ylabel(r"Strain tensor norm [n$\varepsilon$]")
+        ax.set_title("Regional strain-response comparison\nFrobenius norm of the small-strain tensor")
+        ax.grid(True)
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=8))
+        ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=True)
+        return save_figure(fig, output_base, formats, dpi)
+
+
 def find_array(
     arrays: Mapping[str, np.ndarray],
     requested: str,
@@ -604,7 +867,7 @@ def plot_region_strains(
     scale, y_label = STRAIN_UNIT_OPTIONS[strain_unit]
 
     with plt.rc_context(PLOT_RC):
-        fig, ax = plt.subplots(figsize=(9.2, 5.8), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
 
         y_extent_values: list[np.ndarray] = []
 
@@ -624,6 +887,7 @@ def plot_region_strains(
                 label=label,
                 linestyle=LINE_STYLES[index % len(LINE_STYLES)],
                 marker=MARKERS[index % len(MARKERS)],
+                markevery=max(1, len(times) // 10),
             )
 
             if spread_mode == "std":
@@ -742,7 +1006,7 @@ def plot_region_displacement(
     magnitude = np.sqrt(ux * ux + uy * uy + uz * uz)
 
     with plt.rc_context(PLOT_RC):
-        fig, ax = plt.subplots(figsize=(9.2, 5.8), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
 
         for index, (values, label) in enumerate(
             (
@@ -758,6 +1022,7 @@ def plot_region_displacement(
                 label=label,
                 linestyle=LINE_STYLES[index % len(LINE_STYLES)],
                 marker=MARKERS[index % len(MARKERS)],
+                markevery=max(1, len(times) // 10),
             )
 
         ax.axhline(0.0, linewidth=0.8, alpha=0.65)
@@ -794,7 +1059,7 @@ def plot_component_across_regions(
     scale, y_label = STRAIN_UNIT_OPTIONS[strain_unit]
 
     with plt.rc_context(PLOT_RC):
-        fig, ax = plt.subplots(figsize=(9.2, 5.8), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
 
         for index, region in enumerate(regions):
             region_series = all_series[region.name]
@@ -808,6 +1073,7 @@ def plot_component_across_regions(
                 label=region.name,
                 linestyle=LINE_STYLES[index % len(LINE_STYLES)],
                 marker=MARKERS[index % len(MARKERS)],
+                markevery=max(1, len(times) // 10),
             )
 
         ax.axhline(0.0, linewidth=0.8, alpha=0.65)
@@ -915,8 +1181,36 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dpi",
         type=int,
-        default=400,
-        help="PNG resolution (default: 400 dpi)",
+        default=600,
+        help="PNG resolution (default: 600 dpi)",
+    )
+    parser.add_argument(
+        "--flow-h5",
+        type=Path,
+        default=None,
+        help=(
+            "Optional PFLOTRAN flow HDF5 used to generate regional liquid-pressure "
+            "and pressure-change plots."
+        ),
+    )
+    parser.add_argument(
+        "--mapping",
+        type=Path,
+        default=None,
+        help=(
+            "Optional PFLOTRAN flow-to-mechanics mapping file. Required together "
+            "with --flow-h5."
+        ),
+    )
+    parser.add_argument(
+        "--pressure-region",
+        default="Injection",
+        help="Region used for the pressure plots (default: Injection)",
+    )
+    parser.add_argument(
+        "--no-pressure-plots",
+        action="store_true",
+        help="Disable pressure plots even when --flow-h5 and --mapping are supplied.",
     )
     parser.add_argument(
         "--include-volumetric-in-strain-plot",
@@ -937,6 +1231,11 @@ def parse_args() -> argparse.Namespace:
         "--no-component-comparison-plots",
         action="store_true",
         help="Do not create one all-region figure for each strain component",
+    )
+    parser.add_argument(
+        "--no-regional-strain-norm-plot",
+        action="store_true",
+        help="Do not create the all-region strain-tensor-norm nanostrain figure.",
     )
     parser.add_argument(
         "--allow-missing-strain-components",
@@ -974,6 +1273,14 @@ def main() -> int:
             "Axes supplied for unknown regions: " + ", ".join(unknown_axes)
         )
 
+    if (args.flow_h5 is None) != (args.mapping is None):
+        raise RuntimeError("--flow-h5 and --mapping must be supplied together")
+
+    if args.flow_h5 is not None and not args.flow_h5.expanduser().is_file():
+        raise FileNotFoundError(args.flow_h5)
+    if args.mapping is not None and not args.mapping.expanduser().is_file():
+        raise FileNotFoundError(args.mapping)
+
     all_rows: list[dict[str, object]] = []
     strain_long_rows: list[dict[str, object]] = []
     pvd_records: list[tuple[float, Path]] = []
@@ -986,6 +1293,8 @@ def main() -> int:
         dict[str, dict[str, list[float]]],
     ] = {}
     axial_series: dict[str, dict[str, list[float]]] = {}
+    pressure_series: dict[str, dict[str, list[float]]] = {}
+    pressure_long_rows: list[dict[str, object]] = []
 
     with h5py.File(h5_path, "r") as h5:
         vertices = read_geomechanics_coordinates(h5)
@@ -1009,6 +1318,17 @@ def main() -> int:
                 "std": [],
                 "min": [],
                 "max": [],
+            }
+            pressure_series[name] = {
+                "mean": [],
+                "std": [],
+                "min": [],
+                "max": [],
+                "change_mean": [],
+                "change_std": [],
+                "change_min": [],
+                "change_max": [],
+                "times": [],
             }
 
         time_groups = discover_time_groups(h5, node_count)
@@ -1064,6 +1384,10 @@ def main() -> int:
                 for name, _ in STRAIN_COMPONENTS
                 if find_array(arrays, name) is None
             ]
+
+            strain_norm = None
+            if not missing_strain:
+                strain_norm = tensor_strain_norm_values(arrays)
             if missing_strain and not args.allow_missing_strain_components:
                 raise RuntimeError(
                     f"Time group {time_group.hdf5_path!r} is missing required "
@@ -1085,6 +1409,17 @@ def main() -> int:
                 flag = np.zeros(len(regions), dtype=np.uint8)
                 flag[region_position] = 1
                 point_data[f"{region.name}_Flag"] = flag
+
+            # Regional scalar summaries derived from the six strain components.
+            if strain_norm is not None:
+                for region in regions:
+                    stats = scalar_statistics(strain_norm, region.indices)
+                    norm_series = all_series[region.name].setdefault(
+                        "strain_tensor_norm",
+                        {"mean": [], "std": [], "min": [], "max": []},
+                    )
+                    for statistic in ("mean", "std", "min", "max"):
+                        norm_series[statistic].append(stats[statistic])
 
             # Compact VTU statistics for every compatible field.
             for field_name, values in arrays.items():
@@ -1235,6 +1570,113 @@ def main() -> int:
                 f"time={time_group.value:g} {time_group.unit}"
             )
 
+    # Optional flow-HDF5 pressure extraction. The flow and mechanics output
+    # times are intentionally kept independent; pressure is sampled on the
+    # flow output times rather than forcing exact alignment with mechanics.
+    if args.flow_h5 is not None and not args.no_pressure_plots:
+        flow_path = args.flow_h5.expanduser().resolve()
+        mapping_path = args.mapping.expanduser().resolve()
+        pressure_region_name = safe_name(args.pressure_region)
+        if pressure_region_name not in {region.name for region in regions}:
+            raise RuntimeError(
+                f"Pressure region {args.pressure_region!r} was not requested. "
+                f"Available regions: {', '.join(region.name for region in regions)}"
+            )
+        pressure_region_position = next(
+            index for index, region in enumerate(regions)
+            if region.name == pressure_region_name
+        )
+        pressure_region = regions[pressure_region_position]
+
+        with h5py.File(flow_path, "r") as flow_h5:
+            flow_count = infer_dataset_count(flow_h5)
+            flow_groups = discover_time_groups(flow_h5, flow_count)
+            if not flow_groups:
+                raise RuntimeError(f"{flow_path}: no compatible flow time groups found")
+            flow_ids, mechanics_ids = read_mapping(
+                mapping_path, flow_count, node_count
+            )
+
+            baseline_pressure = None
+            baseline_time = None
+            pressure_samples: list[tuple[float, float, dict[str, float]]] = []
+            for flow_group in flow_groups:
+                group = flow_h5[flow_group.hdf5_path]
+                flow_arrays, _ = load_group_arrays(group, flow_count, prefix="Flow_")
+                pressure_raw, pressure_name = resolve_pressure_field(flow_arrays)
+                if pressure_raw is None:
+                    continue
+                mapped_pressure = map_flow_array(
+                    pressure_raw, flow_ids, mechanics_ids, node_count
+                ).astype(np.float64, copy=False)
+                if baseline_pressure is None:
+                    baseline_pressure = mapped_pressure.copy()
+                    baseline_time = float(flow_group.value)
+                change = mapped_pressure - baseline_pressure
+                pressure_stats = scalar_statistics(
+                    mapped_pressure, pressure_region.indices
+                )
+                change_stats = scalar_statistics(change, pressure_region.indices)
+                t = float(flow_group.value)
+                pressure_samples.append((t, t, {
+                    "mean": pressure_stats["mean"],
+                    "std": pressure_stats["std"],
+                    "min": pressure_stats["min"],
+                    "max": pressure_stats["max"],
+                    "change_mean": change_stats["mean"],
+                    "change_std": change_stats["std"],
+                    "change_min": change_stats["min"],
+                    "change_max": change_stats["max"],
+                }))
+                pressure_long_rows.append({
+                    "time": t,
+                    "time_unit": flow_group.unit,
+                    "region": pressure_region.name,
+                    "region_id": pressure_region_position + 1,
+                    "node_count": int(pressure_region.indices.size),
+                    "center_x_m": float(pressure_region.center_xyz[0]),
+                    "center_y_m": float(pressure_region.center_xyz[1]),
+                    "center_z_m": float(pressure_region.center_xyz[2]),
+                    "pressure_mean_Pa": pressure_stats["mean"],
+                    "pressure_std_Pa": pressure_stats["std"],
+                    "pressure_min_Pa": pressure_stats["min"],
+                    "pressure_max_Pa": pressure_stats["max"],
+                    "pressure_change_mean_Pa": change_stats["mean"],
+                    "pressure_change_std_Pa": change_stats["std"],
+                    "pressure_change_min_Pa": change_stats["min"],
+                    "pressure_change_max_Pa": change_stats["max"],
+                    "pressure_field": pressure_name,
+                })
+
+            if not pressure_samples:
+                print(
+                    f"WARNING: no liquid-pressure field found in {flow_path}; "
+                    "pressure plots will be skipped."
+                )
+            else:
+                pressure_samples.sort(key=lambda item: item[0])
+                pressure_times = np.asarray([item[0] for item in pressure_samples], dtype=float)
+                pressure_series[pressure_region.name] = {
+                    key: [sample[2][key] for sample in pressure_samples]
+                    for key in (
+                        "mean", "std", "min", "max",
+                        "change_mean", "change_std", "change_min", "change_max",
+                    )
+                }
+                pressure_series[pressure_region.name]["times"] = pressure_times.tolist()
+                pressure_plot_dir = output_dir / "plots" / "pressure"
+                pressure_plot_dir.mkdir(parents=True, exist_ok=True)
+                plot_outputs.extend(
+                    plot_region_pressure(
+                        pressure_region,
+                        pressure_times,
+                        pressure_series[pressure_region.name],
+                        pressure_plot_dir / f"{safe_name(pressure_region.name)}_pressure",
+                        args.plot_formats,
+                        args.dpi,
+                    )
+                )
+
     preferred = (
         "time",
         "time_unit",
@@ -1276,6 +1718,22 @@ def main() -> int:
 
     pvd_path = output_dir / "region_timeseries.pvd"
     write_pvd(pvd_path, pvd_records)
+
+    if pressure_long_rows:
+        pressure_csv = output_dir / "pressure_timeseries.csv"
+        write_csv_rows(
+            pressure_csv,
+            pressure_long_rows,
+            (
+                "time", "time_unit", "region", "region_id", "node_count",
+                "center_x_m", "center_y_m", "center_z_m",
+                "pressure_mean_Pa", "pressure_std_Pa", "pressure_min_Pa", "pressure_max_Pa",
+                "pressure_change_mean_Pa", "pressure_change_std_Pa",
+                "pressure_change_min_Pa", "pressure_change_max_Pa", "pressure_field",
+            ),
+        )
+    else:
+        pressure_csv = None
 
     # Publication-quality plots: one axes per figure, never subplots.
     by_region_dir = output_dir / "plots" / "by_region"
@@ -1337,6 +1795,18 @@ def main() -> int:
                 )
             )
 
+    if not args.no_regional_strain_norm_plot:
+        plot_outputs.extend(
+            plot_region_strain_norm_across_regions(
+                regions=regions,
+                times=times,
+                all_series=all_series,
+                output_base=output_dir / "plots" / "high_quality" / "regional_strain_tensor_norm_nanostrain",
+                formats=args.plot_formats,
+                dpi=args.dpi,
+            )
+        )
+
     manifest = {
         "geomechanics_hdf5": str(h5_path),
         "node_count": node_count,
@@ -1354,6 +1824,18 @@ def main() -> int:
         "strain_plot_components": [name for name, _ in STRAIN_COMPONENTS],
         "strain_plot_unit": args.strain_unit,
         "plot_spread": args.plot_spread,
+        "pressure": {
+            "enabled": bool(pressure_long_rows),
+            "flow_hdf5": str(args.flow_h5.expanduser().resolve()) if args.flow_h5 is not None else None,
+            "mapping": str(args.mapping.expanduser().resolve()) if args.mapping is not None else None,
+            "region": safe_name(args.pressure_region),
+            "csv": pressure_csv.name if pressure_csv is not None else None,
+            "definition": "Regional nodal mean of liquid pressure and baseline-subtracted liquid pressure change.",
+        },
+        "derived_strain": {
+            "tensor_frobenius_norm": "sqrt(exx^2 + eyy^2 + ezz^2 + 2*(exy^2 + eyz^2 + ezx^2))",
+            "summary_plot_unit": "nanostrain",
+        },
         "regions": [
             {
                 "name": region.name,
@@ -1370,6 +1852,7 @@ def main() -> int:
         "outputs": {
             "combined_csv": combined_csv.name,
             "strain_long_csv": strain_long_csv.name,
+            "pressure_csv": pressure_csv.name if pressure_csv is not None else None,
             "pvd": pvd_path.name,
             "vtu_files": [path.name for _, path in pvd_records],
             "plot_files": [
@@ -1387,6 +1870,8 @@ def main() -> int:
     print("\nRegion time-series export complete")
     print(f"  combined CSV:       {combined_csv}")
     print(f"  long strain CSV:    {strain_long_csv}")
+    if pressure_csv is not None:
+        print(f"  pressure CSV:       {pressure_csv}")
     print(f"  ParaView PVD:       {pvd_path}")
     print(f"  figures written:    {len(plot_outputs)}")
     print(f"  manifest:           {manifest_path}")

@@ -203,12 +203,15 @@ AXIS_ARGUMENTS=()
 log "Creating regional strain/displacement CSV, PVD, PNG, and PDF products."
 "$POSTPROCESS_PYTHON" "$REGION_PLOTTER" \
   "$GEOMECH_H5" \
+  --flow-h5 "$FLOW_H5" \
+  --mapping "$MAPPING" \
   --output-dir "$WORK_DIR/region_timeseries" \
   --region "AVN2=$SOURCE_DIR/AVN2.vset" \
   --region "AVN87=$SOURCE_DIR/AVN87.vset" \
   --region "AVN31=$SOURCE_DIR/AVN31.vset" \
   --region "Injection=$SOURCE_DIR/injection_borehole.vset" \
   --region "HEC=$SOURCE_DIR/hec.vset" \
+  --pressure-region Injection \
   "${AXIS_ARGUMENTS[@]}" \
   --plot-spread "$PLOT_SPREAD" \
   --strain-unit "$PLOT_STRAIN_UNIT" \
