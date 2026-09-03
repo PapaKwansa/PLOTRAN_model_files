@@ -258,7 +258,7 @@ cp -a "$0" "$WORK_DIR/$(basename "$0")" 2>/dev/null || true
 
 (
   cd "$WORK_DIR"
-  find . -type f ! -name SHA256SUMS -print0 \
+  find . -type f ! -name SHA256SUMS ! -path './logs/*' -print0 \
     | sort -z \
     | xargs -0 sha256sum \
     > SHA256SUMS
