@@ -16,8 +16,8 @@ statistics over all unique vset nodes and writes:
 * publication-quality strain figures per region in the requested display units;
 * optional displacement plots per region;
 * high-quality all-region strain comparison in nanostrain;
-* optional injector pressure and pressure-change figures when a flow HDF5 is
-  supplied;
+* cell-centered injector pressure and pressure-change figures when a flow
+  HDF5 and authoritative flow UGE are supplied;
 * comparison plots showing one strain component across all regions;
 * a JSON manifest describing inputs, aggregation, plots, and optional axes.
 
@@ -26,8 +26,8 @@ The six tensor components plotted together are:
     strain_xx, strain_yy, strain_zz,
     strain_xy, strain_yz, strain_zx
 
-The HEC and injection outputs are *spatial summaries of regions*, not point
-measurements. Their mean can hide sign changes inside the region, so the script
+The HEC and injection deformation outputs are *spatial summaries of regions*, not point
+measurements. Injector pressure is handled separately as a cell-centered flow quantity. Their mean can hide sign changes inside the region, so the script
 also records standard deviation, minimum, and maximum and can draw a spread
 band around each mean curve.
 
@@ -531,6 +531,125 @@ def map_flow_array(
     return mapped
 
 
+@dataclass(frozen=True)
+class UGECellMesh:
+    centers: np.ndarray
+    volumes: np.ndarray
+
+
+def _iter_data_lines(path: Path) -> Iterable[str]:
+    with path.open("r", encoding="utf-8", errors="strict") as handle:
+        for raw in handle:
+            line = raw.split("#", 1)[0].strip()
+            if line:
+                yield line
+
+
+def read_uge_cells(path: Path) -> UGECellMesh:
+    """Read PFLOTRAN ASCII UGE cell centers and volumes."""
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    lines = iter(_iter_data_lines(path))
+    try:
+        header = next(lines).split()
+    except StopIteration as exc:
+        raise RuntimeError(f"Empty UGE file: {path}") from exc
+    if len(header) < 2 or header[0].upper() not in {"CELLS", "CELL"}:
+        raise RuntimeError(f"Malformed UGE header in {path}: {' '.join(header)!r}")
+    cell_count = int(header[1])
+    if cell_count <= 0:
+        raise RuntimeError(f"{path}: UGE cell count must be positive")
+
+    centers = np.empty((cell_count, 3), dtype=np.float64)
+    volumes = np.empty(cell_count, dtype=np.float64)
+    seen = np.zeros(cell_count, dtype=bool)
+    for row in range(cell_count):
+        try:
+            fields = next(lines).split()
+        except StopIteration as exc:
+            raise RuntimeError(
+                f"{path}: expected {cell_count:,} cell rows; stopped at row {row + 1}"
+            ) from exc
+        if len(fields) != 5:
+            raise RuntimeError(
+                f"{path}: UGE cell row {row + 1} must have 5 fields; got {len(fields)}"
+            )
+        cell_id = int(fields[0])
+        if not 1 <= cell_id <= cell_count:
+            raise RuntimeError(f"{path}: cell ID {cell_id} outside 1..{cell_count}")
+        index = cell_id - 1
+        if seen[index]:
+            raise RuntimeError(f"{path}: duplicate cell ID {cell_id}")
+        seen[index] = True
+        centers[index] = (float(fields[1]), float(fields[2]), float(fields[3]))
+        volumes[index] = float(fields[4])
+
+    if not np.all(seen):
+        missing = np.flatnonzero(~seen)[:10] + 1
+        raise RuntimeError(f"{path}: missing cell IDs: {missing.tolist()}")
+    if not np.all(np.isfinite(centers)):
+        raise RuntimeError(f"{path}: non-finite cell centers detected")
+    if not np.all(np.isfinite(volumes)) or np.any(volumes <= 0.0):
+        raise RuntimeError(f"{path}: cell volumes must be finite and positive")
+    return UGECellMesh(centers=centers, volumes=volumes)
+
+
+def infer_flow_uge_path(mapping_path: Path | None, explicit_path: Path | None) -> Path:
+    """Resolve the flow UGE; infer <mapping stem>.uge when possible."""
+    if explicit_path is not None:
+        return explicit_path.expanduser().resolve()
+    if mapping_path is None:
+        raise RuntimeError(
+            "Cell-centered pressure diagnostics require --flow-uge or --mapping "
+            "from which the standard <mapping stem>.uge can be inferred."
+        )
+    inferred = mapping_path.expanduser().resolve().with_suffix(".uge")
+    if not inferred.is_file():
+        raise FileNotFoundError(
+            f"Could not infer flow UGE from {mapping_path}: {inferred}. "
+            "Pass --flow-uge explicitly."
+        )
+    return inferred
+
+
+def read_flow_scalar_array(
+    group: h5py.Group,
+    flow_cell_count: int,
+    requested: str,
+) -> tuple[np.ndarray, str] | tuple[None, None]:
+    """Read a numeric PFLOTRAN flow field containing one value per cell."""
+    target = normalized_name(requested)
+    matches: list[tuple[str, np.ndarray]] = []
+
+    def visitor(name: str, obj: h5py.Dataset) -> None:
+        if not isinstance(obj, h5py.Dataset):
+            return
+        shape = tuple(int(value) for value in obj.shape)
+        if shape == (flow_cell_count,):
+            values = np.asarray(obj[...])
+        elif shape == (flow_cell_count, 1):
+            values = np.asarray(obj[:, 0])
+        else:
+            return
+        if not (np.issubdtype(values.dtype, np.number) or np.issubdtype(values.dtype, np.bool_)):
+            return
+        if np.issubdtype(values.dtype, np.floating) and not np.all(np.isfinite(values)):
+            raise RuntimeError(f"Dataset {obj.name!r} contains NaN or infinity")
+        leaf = normalized_name(Path(name).name)
+        if leaf == target or leaf.startswith(target + "_") or target in leaf:
+            matches.append((obj.name, np.asarray(values, dtype=np.float64).reshape(-1)))
+
+    group.visititems(visitor)
+    if not matches:
+        return None, None
+    exact = [item for item in matches if normalized_name(Path(item[0]).name) == target]
+    name, values = exact[0] if exact else matches[0]
+    return values, name
+
+
+PRESSURE_CENTER_DEFAULT = np.asarray([5000.0, 5000.0, -527.5], dtype=np.float64)
+
+
 def find_flow_field(arrays: Mapping[str, np.ndarray], requested: str) -> np.ndarray | None:
     """Find a flow field by base name despite unit suffixes and Flow_ prefix."""
     target = normalized_name(requested)
@@ -597,64 +716,84 @@ def plot_region_pressure(
     output_base: Path,
     formats: Sequence[str],
     dpi: int,
+    cell_count: int,
+    center_cell_id: int,
+    center_distance: float,
+    baseline_time: float,
 ) -> list[str]:
-    """Plot injector/region pressure and pressure change as publication figures."""
+    """Plot cell-centered injector liquid-pressure change and absolute pressure."""
     pressure_mean = np.asarray(pressure["mean"], dtype=float)
-    pressure_change = np.asarray(pressure["change_mean"], dtype=float)
+    pressure_median = np.asarray(pressure["median"], dtype=float)
+    pressure_p05 = np.asarray(pressure["p05"], dtype=float)
+    pressure_p95 = np.asarray(pressure["p95"], dtype=float)
+    pressure_center = np.asarray(pressure["center"], dtype=float)
+    pressure_max = np.asarray(pressure["max"], dtype=float)
+
+    mean_change = np.asarray(pressure["change_mean"], dtype=float) / 1.0e6
+    median_change = np.asarray(pressure["change_median"], dtype=float) / 1.0e6
+    p05_change = np.asarray(pressure["change_p05"], dtype=float) / 1.0e6
+    p95_change = np.asarray(pressure["change_p95"], dtype=float) / 1.0e6
+    center_change = np.asarray(pressure["change_center"], dtype=float) / 1.0e6
+    max_change = np.asarray(pressure["change_max"], dtype=float) / 1.0e6
 
     with plt.rc_context(PLOT_RC):
         fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
-        markevery = max(1, len(times) // 10)
-        ax.plot(
-            times,
-            pressure_change / 1.0e6,
-            label=r"$\Delta P$",
-            linestyle="-",
-            marker="o",
-            markevery=markevery,
-            linewidth=2.4,
+        ax.fill_between(
+            times, p05_change, p95_change, alpha=0.16,
+            label="5–95% injector-cell range",
         )
+        markevery = max(1, len(times) // 10)
+        ax.plot(times, mean_change, marker="o", markevery=markevery,
+                linewidth=2.6, label="mean Δp")
+        ax.plot(times, median_change, linestyle="--", marker="s",
+                markevery=markevery, linewidth=1.8, label="median Δp")
+        ax.plot(times, center_change, linestyle=":", linewidth=2.2,
+                label=f"center-cell Δp (cell {center_cell_id})")
+        ax.plot(times, max_change, linestyle="-.", linewidth=1.0, alpha=0.7,
+                label="maximum Δp")
         ax.axhline(0.0, linewidth=0.9, alpha=0.65)
         ax.axvline(19.0, linewidth=1.0, linestyle="--", alpha=0.7)
         ax.text(19.0, 0.98, "Injection stops", transform=ax.get_xaxis_transform(),
                 ha="right", va="top", fontsize=9)
         ax.set_xlabel("Time [h]")
-        ax.set_ylabel("Mean pressure change [MPa]")
+        ax.set_ylabel("Pore-pressure change, Δp [MPa]")
         ax.set_title(
-            f"{region.name}: pore-pressure response\n"
-            f"mean over {region.indices.size:,} vset nodes"
+            f"{region.name}: cell-centered pore-pressure response\n"
+            f"{cell_count:,} injector cells; baseline = first flow snapshot at {baseline_time:g} h"
         )
         ax.grid(True)
         ax.xaxis.set_major_locator(MaxNLocator(nbins=8))
         ax.legend(loc="best", frameon=True)
         outputs = save_figure(fig, output_base, formats, dpi)
 
-    # Also provide a raw-pressure version for reference when the baseline is useful.
     with plt.rc_context(PLOT_RC):
         fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
         markevery = max(1, len(times) // 10)
-        ax.plot(
-            times,
-            pressure_mean / 1.0e6,
-            label="Mean liquid pressure",
-            linestyle="-",
-            marker="s",
-            markevery=markevery,
-            linewidth=2.2,
-        )
+        ax.plot(times, pressure_mean / 1.0e6, marker="o", markevery=markevery,
+                linewidth=2.3, label="mean liquid pressure")
+        ax.plot(times, pressure_center / 1.0e6, linestyle=":", linewidth=2.0,
+                label=f"center-cell pressure (cell {center_cell_id})")
+        ax.plot(times, pressure_max / 1.0e6, linestyle="-.", linewidth=1.0,
+                alpha=0.7, label="maximum liquid pressure")
         ax.axvline(19.0, linewidth=1.0, linestyle="--", alpha=0.7)
         ax.text(19.0, 0.98, "Injection stops", transform=ax.get_xaxis_transform(),
                 ha="right", va="top", fontsize=9)
         ax.set_xlabel("Time [h]")
-        ax.set_ylabel("Mean liquid pressure [MPa]")
+        ax.set_ylabel("Liquid pressure [MPa]")
         ax.set_title(
-            f"{region.name}: mean liquid pressure\n"
-            f"mean over {region.indices.size:,} vset nodes"
+            f"{region.name}: cell-centered liquid pressure\n"
+            f"{cell_count:,} injector cells; center cell {center_cell_id} "
+            f"is {center_distance:.3f} m from the specified injection center"
         )
         ax.grid(True)
         ax.xaxis.set_major_locator(MaxNLocator(nbins=8))
         ax.legend(loc="best", frameon=True)
-        outputs.extend(save_figure(fig, output_base.with_name(output_base.name + "_absolute"), formats, dpi))
+        outputs.extend(
+            save_figure(
+                fig, output_base.with_name(output_base.name + "_absolute"),
+                formats, dpi,
+            )
+        )
 
     return outputs
 
@@ -1201,14 +1340,31 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Optional legacy flow-to-mechanics mapping file. It is retained for "
-            "metadata/backward compatibility but is NOT used for injector pressure."
+            "Validated flow-to-mechanics mapping. It is used to document and, "
+            "when supplied, validate the released flow-cell numbering."
+        ),
+    )
+    parser.add_argument(
+        "--flow-uge",
+        type=Path,
+        default=None,
+        help=(
+            "Authoritative PFLOTRAN flow UGE containing cell centers. If omitted, "
+            "the script infers <mapping stem>.uge from --mapping."
         ),
     )
     parser.add_argument(
         "--pressure-region",
         default="Injection",
         help="Region used for the pressure plots (default: Injection)",
+    )
+    parser.add_argument(
+        "--pressure-center",
+        type=float,
+        nargs=3,
+        default=PRESSURE_CENTER_DEFAULT.tolist(),
+        metavar=("X", "Y", "Z"),
+        help="Physical point used to identify the nearest injector cell [m].",
     )
     parser.add_argument(
         "--no-pressure-plots",
@@ -1285,6 +1441,12 @@ def main() -> int:
         raise FileNotFoundError(args.flow_h5)
     if args.mapping is not None and not args.mapping.expanduser().is_file():
         raise FileNotFoundError(args.mapping)
+
+    flow_uge_path = None
+    if args.flow_h5 is not None and not args.no_pressure_plots:
+        flow_uge_path = infer_flow_uge_path(args.mapping, args.flow_uge)
+        if not flow_uge_path.is_file():
+            raise FileNotFoundError(flow_uge_path)
 
     all_rows: list[dict[str, object]] = []
     strain_long_rows: list[dict[str, object]] = []
@@ -1575,13 +1737,15 @@ def main() -> int:
                 f"time={time_group.value:g} {time_group.unit}"
             )
 
-    # Optional flow-HDF5 pressure extraction. The flow and mechanics output
-    # times are intentionally kept independent; pressure is sampled on the
-    # flow output times rather than forcing exact alignment with mechanics.
+    # Optional flow-HDF5 pressure extraction.
     #
-    # IMPORTANT: the injector pressure vset is a FLOW-mesh vset. Therefore its
-    # node IDs are applied directly to the flow pressure array. The
-    # flow-to-mechanics mapping is deliberately NOT used for this diagnostic.
+    # IMPORTANT: LIQUID_PRESSURE is cell-centered in the PFLOTRAN flow grid.
+    # Geomechanics displacement/strain remain vertex-centered and continue to use
+    # the geomechanics HDF5 and vset node IDs above. For pressure, the injector
+    # vset is interpreted as flow-cell IDs, and the validated UGE supplies the
+    # corresponding cell-center coordinates. This avoids the dangerous ambiguity
+    # that occurs here because the model happens to have 140,456 flow cells and
+    # 140,456 mechanics vertices.
     if args.flow_h5 is not None and not args.no_pressure_plots:
         flow_path = args.flow_h5.expanduser().resolve()
         pressure_region_name = safe_name(args.pressure_region)
@@ -1596,114 +1760,146 @@ def main() -> int:
         )
         pressure_region = regions[pressure_region_position]
 
+        if flow_uge_path is None:
+            raise RuntimeError("Flow UGE path was not resolved for pressure extraction")
+        flow_uge = read_uge_cells(flow_uge_path)
+
         with h5py.File(flow_path, "r") as flow_h5:
             flow_count = infer_dataset_count(flow_h5)
+            uge_count = int(flow_uge.centers.shape[0])
+            if uge_count != flow_count:
+                raise RuntimeError(
+                    f"Flow UGE cell count ({uge_count:,}) does not match "
+                    f"flow-HDF5 field length ({flow_count:,})."
+                )
+
             flow_groups = discover_time_groups(flow_h5, flow_count)
             if not flow_groups:
-                raise RuntimeError(f"{flow_path}: no compatible flow time groups found")
+                raise RuntimeError(
+                    f"{flow_path}: no compatible flow time groups found"
+                )
 
-            # The injector pressure vset is indexed in FLOW-node numbering.
-            # Do not use pressure_region.indices here because those indices
-            # belong to the geomechanics HDF5 numbering used by the strain
-            # calculations above.
-            pressure_flow_indices = read_vset(
-                pressure_region.vset_path,
-                flow_count,
+            pressure_cell_indices = read_vset(
+                pressure_region.vset_path, flow_count
             )
+            cell_coordinates = flow_uge.centers[pressure_cell_indices]
 
+            injection_center = np.asarray(args.pressure_center, dtype=np.float64)
+            distances = np.linalg.norm(
+                cell_coordinates - injection_center[None, :], axis=1
+            )
+            center_local = int(np.argmin(distances))
+            center_flow_index = int(pressure_cell_indices[center_local])
+            center_cell_id = center_flow_index + 1
+            center_distance = float(distances[center_local])
+
+            print(f"Flow UGE: {flow_uge_path}")
             print(
-                f"Injector pressure vset nodes: "
-                f"{pressure_flow_indices.size:,}"
+                f"Injector pressure cells: {pressure_cell_indices.size:,}"
+            )
+            print(
+                f"Nearest injector cell to ({injection_center[0]:.3f}, "
+                f"{injection_center[1]:.3f}, {injection_center[2]:.3f}) m: "
+                f"cell {center_cell_id}; distance={center_distance:.6f} m"
             )
 
             baseline_pressure = None
             baseline_time = None
-            pressure_samples: list[tuple[float, float, dict[str, float]]] = []
+            pressure_samples: list[tuple[float, dict[str, float]]] = []
+
             for flow_group in flow_groups:
                 group = flow_h5[flow_group.hdf5_path]
-                flow_arrays, _ = load_group_arrays(group, flow_count, prefix="Flow_")
-                pressure_raw, pressure_name = resolve_pressure_field(flow_arrays)
+                pressure_raw, pressure_name = read_flow_scalar_array(
+                    group, flow_count, "LIQUID_PRESSURE"
+                )
                 if pressure_raw is None:
                     continue
 
-                pressure = np.asarray(pressure_raw, dtype=np.float64)
+                pressure = np.asarray(
+                    pressure_raw, dtype=np.float64
+                ).reshape(-1)
                 if pressure.size != flow_count:
                     raise RuntimeError(
-                        f"Pressure field {pressure_name!r} has "
-                        f"{pressure.size:,} values, but the flow mesh has "
-                        f"{flow_count:,} nodes."
+                        f"Pressure field {pressure_name!r} has {pressure.size:,} values, "
+                        f"but the flow UGE has {flow_count:,} cells."
                     )
 
-                # Apply the injection vset directly to the FLOW pressure field.
-                pressure_values = pressure[pressure_flow_indices]
+                pressure_values = pressure[pressure_cell_indices]
+                center_value = float(pressure[center_flow_index])
 
-                # Use the first available flow snapshot as the pressure baseline,
-                # matching the proven injector diagnostic.
                 if baseline_pressure is None:
                     baseline_pressure = pressure_values.copy()
                     baseline_time = float(flow_group.value)
 
-                # Node-by-node pressure change is computed first; all regional
-                # statistics are then taken from that pressure-change field.
                 change = pressure_values - baseline_pressure
+                center_change = center_value - float(
+                    baseline_pressure[center_local]
+                )
 
-                pressure_stats = {
+                stats = {
                     "mean": float(np.mean(pressure_values, dtype=np.float64)),
-                    "std": float(np.std(pressure_values, dtype=np.float64)),
+                    "median": float(np.median(pressure_values)),
+                    "p05": float(np.percentile(pressure_values, 5.0)),
+                    "p95": float(np.percentile(pressure_values, 95.0)),
                     "min": float(np.min(pressure_values)),
                     "max": float(np.max(pressure_values)),
+                    "center": center_value,
+                    "change_mean": float(np.mean(change, dtype=np.float64)),
+                    "change_median": float(np.median(change)),
+                    "change_p05": float(np.percentile(change, 5.0)),
+                    "change_p95": float(np.percentile(change, 95.0)),
+                    "change_min": float(np.min(change)),
+                    "change_max": float(np.max(change)),
+                    "change_center": float(center_change),
                 }
-                change_stats = {
-                    "mean": float(np.mean(change, dtype=np.float64)),
-                    "std": float(np.std(change, dtype=np.float64)),
-                    "min": float(np.min(change)),
-                    "max": float(np.max(change)),
-                }
+                pressure_samples.append((float(flow_group.value), stats))
 
-                t = float(flow_group.value)
-                pressure_samples.append((t, t, {
-                    "mean": pressure_stats["mean"],
-                    "std": pressure_stats["std"],
-                    "min": pressure_stats["min"],
-                    "max": pressure_stats["max"],
-                    "change_mean": change_stats["mean"],
-                    "change_std": change_stats["std"],
-                    "change_min": change_stats["min"],
-                    "change_max": change_stats["max"],
-                }))
                 pressure_long_rows.append({
-                    "time": t,
+                    "time": float(flow_group.value),
                     "time_unit": flow_group.unit,
                     "region": pressure_region.name,
                     "region_id": pressure_region_position + 1,
-                    "node_count": int(pressure_flow_indices.size),
-                    "center_x_m": float(pressure_region.center_xyz[0]),
-                    "center_y_m": float(pressure_region.center_xyz[1]),
-                    "center_z_m": float(pressure_region.center_xyz[2]),
-                    "pressure_mean_Pa": pressure_stats["mean"],
-                    "pressure_std_Pa": pressure_stats["std"],
-                    "pressure_min_Pa": pressure_stats["min"],
-                    "pressure_max_Pa": pressure_stats["max"],
-                    "pressure_change_mean_Pa": change_stats["mean"],
-                    "pressure_change_std_Pa": change_stats["std"],
-                    "pressure_change_min_Pa": change_stats["min"],
-                    "pressure_change_max_Pa": change_stats["max"],
+                    "cell_count": int(pressure_cell_indices.size),
+                    "center_cell_id": center_cell_id,
+                    "center_cell_distance_m": center_distance,
+                    "center_x_m": float(np.mean(cell_coordinates[:, 0])),
+                    "center_y_m": float(np.mean(cell_coordinates[:, 1])),
+                    "center_z_m": float(np.mean(cell_coordinates[:, 2])),
+                    "pressure_mean_Pa": stats["mean"],
+                    "pressure_median_Pa": stats["median"],
+                    "pressure_p05_Pa": stats["p05"],
+                    "pressure_p95_Pa": stats["p95"],
+                    "pressure_min_Pa": stats["min"],
+                    "pressure_max_Pa": stats["max"],
+                    "pressure_center_Pa": stats["center"],
+                    "pressure_change_mean_Pa": stats["change_mean"],
+                    "pressure_change_median_Pa": stats["change_median"],
+                    "pressure_change_p05_Pa": stats["change_p05"],
+                    "pressure_change_p95_Pa": stats["change_p95"],
+                    "pressure_change_min_Pa": stats["change_min"],
+                    "pressure_change_max_Pa": stats["change_max"],
+                    "pressure_change_center_Pa": stats["change_center"],
+                    "pressure_baseline_time": baseline_time,
                     "pressure_field": pressure_name,
+                    "flow_uge": str(flow_uge_path),
                 })
 
             if not pressure_samples:
                 print(
-                    f"WARNING: no liquid-pressure field found in {flow_path}; "
+                    f"WARNING: no LIQUID_PRESSURE field found in {flow_path}; "
                     "pressure plots will be skipped."
                 )
             else:
                 pressure_samples.sort(key=lambda item: item[0])
-                pressure_times = np.asarray([item[0] for item in pressure_samples], dtype=float)
+                pressure_times = np.asarray(
+                    [item[0] for item in pressure_samples], dtype=float
+                )
                 pressure_series[pressure_region.name] = {
-                    key: [sample[2][key] for sample in pressure_samples]
+                    key: [sample[1][key] for sample in pressure_samples]
                     for key in (
-                        "mean", "std", "min", "max",
-                        "change_mean", "change_std", "change_min", "change_max",
+                        "mean", "median", "p05", "p95", "min", "max", "center",
+                        "change_mean", "change_median", "change_p05",
+                        "change_p95", "change_min", "change_max", "change_center",
                     )
                 }
                 pressure_series[pressure_region.name]["times"] = pressure_times.tolist()
@@ -1711,12 +1907,17 @@ def main() -> int:
                 pressure_plot_dir.mkdir(parents=True, exist_ok=True)
                 plot_outputs.extend(
                     plot_region_pressure(
-                        pressure_region,
-                        pressure_times,
-                        pressure_series[pressure_region.name],
-                        pressure_plot_dir / f"{safe_name(pressure_region.name)}_pressure",
-                        args.plot_formats,
-                        args.dpi,
+                        region=pressure_region,
+                        times=pressure_times,
+                        pressure=pressure_series[pressure_region.name],
+                        output_base=pressure_plot_dir
+                        / f"{safe_name(pressure_region.name)}_pressure",
+                        formats=args.plot_formats,
+                        dpi=args.dpi,
+                        cell_count=int(pressure_cell_indices.size),
+                        center_cell_id=center_cell_id,
+                        center_distance=center_distance,
+                        baseline_time=float(baseline_time),
                     )
                 )
 
@@ -1768,11 +1969,15 @@ def main() -> int:
             pressure_csv,
             pressure_long_rows,
             (
-                "time", "time_unit", "region", "region_id", "node_count",
+                "time", "time_unit", "region", "region_id", "cell_count",
+                "center_cell_id", "center_cell_distance_m",
                 "center_x_m", "center_y_m", "center_z_m",
-                "pressure_mean_Pa", "pressure_std_Pa", "pressure_min_Pa", "pressure_max_Pa",
-                "pressure_change_mean_Pa", "pressure_change_std_Pa",
-                "pressure_change_min_Pa", "pressure_change_max_Pa", "pressure_field",
+                "pressure_mean_Pa", "pressure_median_Pa", "pressure_p05_Pa", "pressure_p95_Pa",
+                "pressure_min_Pa", "pressure_max_Pa", "pressure_center_Pa",
+                "pressure_change_mean_Pa", "pressure_change_median_Pa",
+                "pressure_change_p05_Pa", "pressure_change_p95_Pa",
+                "pressure_change_min_Pa", "pressure_change_max_Pa",
+                "pressure_change_center_Pa", "pressure_baseline_time", "pressure_field", "flow_uge",
             ),
         )
     else:
@@ -1870,13 +2075,18 @@ def main() -> int:
         "pressure": {
             "enabled": bool(pressure_long_rows),
             "flow_hdf5": str(args.flow_h5.expanduser().resolve()) if args.flow_h5 is not None else None,
+            "flow_uge": str(flow_uge_path) if flow_uge_path is not None else None,
             "mapping": str(args.mapping.expanduser().resolve()) if args.mapping is not None else None,
             "region": safe_name(args.pressure_region),
             "csv": pressure_csv.name if pressure_csv is not None else None,
+            "sampling": "cell-centered",
+            "pressure_center_xyz_m": [float(value) for value in args.pressure_center],
             "definition": (
-                "Regional nodal mean of liquid pressure and node-by-node "
-                "baseline-subtracted liquid pressure change, using the injector "
-                "vset directly in flow-mesh numbering."
+                "LIQUID_PRESSURE is sampled at flow-cell centers for the cells "
+                "listed by the injector vset. The nearest selected cell to the "
+                "specified physical injection center is reported as the center "
+                "cell. Pressure change is baseline-subtracted cell-by-cell from "
+                "the first available flow snapshot."
             ),
         },
         "derived_strain": {
