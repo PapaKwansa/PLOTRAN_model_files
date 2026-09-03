@@ -16,8 +16,8 @@ statistics over all unique vset nodes and writes:
 * publication-quality strain figures per region in the requested display units;
 * optional displacement plots per region;
 * high-quality all-region strain comparison in nanostrain;
-* optional injector pressure and pressure-change figures when a flow HDF5 and
-  mapping file are supplied;
+* optional injector pressure and pressure-change figures when a flow HDF5 is
+  supplied;
 * comparison plots showing one strain component across all regions;
 * a JSON manifest describing inputs, aggregation, plots, and optional axes.
 
@@ -544,12 +544,15 @@ def find_flow_field(arrays: Mapping[str, np.ndarray], requested: str) -> np.ndar
 
 
 def resolve_pressure_field(arrays: Mapping[str, np.ndarray]) -> tuple[np.ndarray | None, str | None]:
-    """Find the liquid-pressure field with robust PFLOTRAN naming support."""
+    """Find the liquid-pressure field used for the injector pressure plot.
+
+    Keep this intentionally strict: the injector diagnostic should use the
+    PFLOTRAN liquid-pressure field rather than a generic dataset whose name
+    merely contains ``Pressure``.
+    """
     candidates = (
         "Flow_Liquid_Pressure",
         "Liquid_Pressure",
-        "Pressure",
-        "Flow_Pressure",
     )
     for requested in candidates:
         values = find_flow_field(arrays, requested)
@@ -1198,8 +1201,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Optional PFLOTRAN flow-to-mechanics mapping file. Required together "
-            "with --flow-h5."
+            "Optional legacy flow-to-mechanics mapping file. It is retained for "
+            "metadata/backward compatibility but is NOT used for injector pressure."
         ),
     )
     parser.add_argument(
@@ -1210,7 +1213,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-pressure-plots",
         action="store_true",
-        help="Disable pressure plots even when --flow-h5 and --mapping are supplied.",
+        help="Disable pressure plots even when --flow-h5 is supplied.",
     )
     parser.add_argument(
         "--include-volumetric-in-strain-plot",
@@ -1273,8 +1276,10 @@ def main() -> int:
             "Axes supplied for unknown regions: " + ", ".join(unknown_axes)
         )
 
-    if (args.flow_h5 is None) != (args.mapping is None):
-        raise RuntimeError("--flow-h5 and --mapping must be supplied together")
+    if args.flow_h5 is None and args.mapping is not None:
+        raise RuntimeError(
+            "--mapping is only accepted when --flow-h5 is also supplied"
+        )
 
     if args.flow_h5 is not None and not args.flow_h5.expanduser().is_file():
         raise FileNotFoundError(args.flow_h5)
@@ -1573,9 +1578,12 @@ def main() -> int:
     # Optional flow-HDF5 pressure extraction. The flow and mechanics output
     # times are intentionally kept independent; pressure is sampled on the
     # flow output times rather than forcing exact alignment with mechanics.
+    #
+    # IMPORTANT: the injector pressure vset is a FLOW-mesh vset. Therefore its
+    # node IDs are applied directly to the flow pressure array. The
+    # flow-to-mechanics mapping is deliberately NOT used for this diagnostic.
     if args.flow_h5 is not None and not args.no_pressure_plots:
         flow_path = args.flow_h5.expanduser().resolve()
-        mapping_path = args.mapping.expanduser().resolve()
         pressure_region_name = safe_name(args.pressure_region)
         if pressure_region_name not in {region.name for region in regions}:
             raise RuntimeError(
@@ -1593,8 +1601,19 @@ def main() -> int:
             flow_groups = discover_time_groups(flow_h5, flow_count)
             if not flow_groups:
                 raise RuntimeError(f"{flow_path}: no compatible flow time groups found")
-            flow_ids, mechanics_ids = read_mapping(
-                mapping_path, flow_count, node_count
+
+            # The injector pressure vset is indexed in FLOW-node numbering.
+            # Do not use pressure_region.indices here because those indices
+            # belong to the geomechanics HDF5 numbering used by the strain
+            # calculations above.
+            pressure_flow_indices = read_vset(
+                pressure_region.vset_path,
+                flow_count,
+            )
+
+            print(
+                f"Injector pressure vset nodes: "
+                f"{pressure_flow_indices.size:,}"
             )
 
             baseline_pressure = None
@@ -1606,17 +1625,41 @@ def main() -> int:
                 pressure_raw, pressure_name = resolve_pressure_field(flow_arrays)
                 if pressure_raw is None:
                     continue
-                mapped_pressure = map_flow_array(
-                    pressure_raw, flow_ids, mechanics_ids, node_count
-                ).astype(np.float64, copy=False)
+
+                pressure = np.asarray(pressure_raw, dtype=np.float64)
+                if pressure.size != flow_count:
+                    raise RuntimeError(
+                        f"Pressure field {pressure_name!r} has "
+                        f"{pressure.size:,} values, but the flow mesh has "
+                        f"{flow_count:,} nodes."
+                    )
+
+                # Apply the injection vset directly to the FLOW pressure field.
+                pressure_values = pressure[pressure_flow_indices]
+
+                # Use the first available flow snapshot as the pressure baseline,
+                # matching the proven injector diagnostic.
                 if baseline_pressure is None:
-                    baseline_pressure = mapped_pressure.copy()
+                    baseline_pressure = pressure_values.copy()
                     baseline_time = float(flow_group.value)
-                change = mapped_pressure - baseline_pressure
-                pressure_stats = scalar_statistics(
-                    mapped_pressure, pressure_region.indices
-                )
-                change_stats = scalar_statistics(change, pressure_region.indices)
+
+                # Node-by-node pressure change is computed first; all regional
+                # statistics are then taken from that pressure-change field.
+                change = pressure_values - baseline_pressure
+
+                pressure_stats = {
+                    "mean": float(np.mean(pressure_values, dtype=np.float64)),
+                    "std": float(np.std(pressure_values, dtype=np.float64)),
+                    "min": float(np.min(pressure_values)),
+                    "max": float(np.max(pressure_values)),
+                }
+                change_stats = {
+                    "mean": float(np.mean(change, dtype=np.float64)),
+                    "std": float(np.std(change, dtype=np.float64)),
+                    "min": float(np.min(change)),
+                    "max": float(np.max(change)),
+                }
+
                 t = float(flow_group.value)
                 pressure_samples.append((t, t, {
                     "mean": pressure_stats["mean"],
@@ -1633,7 +1676,7 @@ def main() -> int:
                     "time_unit": flow_group.unit,
                     "region": pressure_region.name,
                     "region_id": pressure_region_position + 1,
-                    "node_count": int(pressure_region.indices.size),
+                    "node_count": int(pressure_flow_indices.size),
                     "center_x_m": float(pressure_region.center_xyz[0]),
                     "center_y_m": float(pressure_region.center_xyz[1]),
                     "center_z_m": float(pressure_region.center_xyz[2]),
@@ -1830,7 +1873,11 @@ def main() -> int:
             "mapping": str(args.mapping.expanduser().resolve()) if args.mapping is not None else None,
             "region": safe_name(args.pressure_region),
             "csv": pressure_csv.name if pressure_csv is not None else None,
-            "definition": "Regional nodal mean of liquid pressure and baseline-subtracted liquid pressure change.",
+            "definition": (
+                "Regional nodal mean of liquid pressure and node-by-node "
+                "baseline-subtracted liquid pressure change, using the injector "
+                "vset directly in flow-mesh numbering."
+            ),
         },
         "derived_strain": {
             "tensor_frobenius_norm": "sqrt(exx^2 + eyy^2 + ezz^2 + 2*(exy^2 + eyz^2 + ezx^2))",
