@@ -439,7 +439,7 @@ GEOMECHANICS
 
   # Reduced exchange interval for the stabilized two-way solution.
   GEOMECHANICS_TIME
-    COUPLING_TIMESTEP_SIZE 5.d-3 hour
+    COUPLING_TIMESTEP_SIZE 2.5.d-3 hour
   END
 
   # ---------------------------------------------------------------------------
