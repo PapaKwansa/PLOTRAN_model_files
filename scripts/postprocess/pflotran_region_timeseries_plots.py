@@ -644,80 +644,269 @@ def plot_region_pressure(
     center_cell_id: int,
     baseline_time: float,
 ) -> list[str]:
-    """Plot cell-centered injector liquid-pressure change and absolute pressure."""
+    """Create publication-quality injector pressure figures.
+
+    Pressure is cell-centered. ``change_*`` quantities are already defined as
+    p(t) - p(baseline) over the mapped injector flow-cell population.
+
+    Two pressure-change figures are produced:
+      1. Full injection/shut-in history in MPa.
+      2. Post-shut-in relaxation (19 h onward) in kPa so the long tail remains
+         readable rather than being visually compressed by the early transient.
+
+    An absolute-pressure figure is also retained for diagnostics.
+    """
     pressure_mean = np.asarray(pressure["mean"], dtype=float)
     pressure_median = np.asarray(pressure["median"], dtype=float)
     pressure_p05 = np.asarray(pressure["p05"], dtype=float)
     pressure_p95 = np.asarray(pressure["p95"], dtype=float)
-    pressure_center = np.asarray(pressure["center"], dtype=float)
+    pressure_min = np.asarray(pressure["min"], dtype=float)
     pressure_max = np.asarray(pressure["max"], dtype=float)
 
-    mean_change = np.asarray(pressure["change_mean"], dtype=float) / 1.0e6
-    median_change = np.asarray(pressure["change_median"], dtype=float) / 1.0e6
-    p05_change = np.asarray(pressure["change_p05"], dtype=float) / 1.0e6
-    p95_change = np.asarray(pressure["change_p95"], dtype=float) / 1.0e6
-    center_change = np.asarray(pressure["change_center"], dtype=float) / 1.0e6
-    min_change = np.asarray(pressure["change_min"], dtype=float) / 1.0e6
-    max_change = np.asarray(pressure["change_max"], dtype=float) / 1.0e6
+    mean_change_pa = np.asarray(pressure["change_mean"], dtype=float)
+    median_change_pa = np.asarray(pressure["change_median"], dtype=float)
+    p05_change_pa = np.asarray(pressure["change_p05"], dtype=float)
+    p95_change_pa = np.asarray(pressure["change_p95"], dtype=float)
+    min_change_pa = np.asarray(pressure["change_min"], dtype=float)
+    max_change_pa = np.asarray(pressure["change_max"], dtype=float)
 
+    outputs: list[str] = []
+
+    # Common publication plot formatting.
     with plt.rc_context(PLOT_RC):
-        fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(10.5, 6.4), constrained_layout=True)
+
+        mean_change = mean_change_pa / 1.0e6
+        median_change = median_change_pa / 1.0e6
+        p05_change = p05_change_pa / 1.0e6
+        p95_change = p95_change_pa / 1.0e6
+        min_change = min_change_pa / 1.0e6
+        max_change = max_change_pa / 1.0e6
+
         ax.fill_between(
-            times, p05_change, p95_change, alpha=0.16,
-            label="5–95% injector-cell range",
+            times,
+            p05_change,
+            p95_change,
+            alpha=0.16,
+            label="5th–95th percentile",
         )
-        markevery = max(1, len(times) // 10)
-        ax.plot(times, mean_change, marker="o", markevery=markevery,
-                linewidth=2.6, label="mean Δp")
-        ax.plot(times, median_change, linestyle="--", marker="s",
-                markevery=markevery, linewidth=1.8, label="median Δp")
-        ax.plot(times, center_change, linestyle=":", linewidth=2.2,
-                label=f"representative-cell Δp (cell {center_cell_id})")
-        ax.plot(times, min_change, linestyle=(0, (2, 2)), linewidth=1.0,
-                alpha=0.7, label="minimum Δp")
-        ax.plot(times, max_change, linestyle="-.", linewidth=1.2, alpha=0.8,
-                label="maximum Δp")
-        ax.axhline(0.0, linewidth=0.9, alpha=0.65)
-        ax.axvline(19.0, linewidth=1.0, linestyle="--", alpha=0.7)
-        ax.text(19.0, 0.98, "Injection stops", transform=ax.get_xaxis_transform(),
-                ha="right", va="top", fontsize=9)
+        ax.plot(
+            times,
+            mean_change,
+            linewidth=2.8,
+            marker="o",
+            markevery=max(1, len(times) // 12),
+            label="Mean Δp",
+        )
+        ax.plot(
+            times,
+            median_change,
+            linewidth=2.0,
+            linestyle="--",
+            marker="s",
+            markevery=max(1, len(times) // 12),
+            label="Median Δp",
+        )
+        ax.plot(
+            times,
+            max_change,
+            linewidth=1.4,
+            linestyle="-.",
+            alpha=0.85,
+            label="Maximum Δp",
+        )
+        ax.plot(
+            times,
+            min_change,
+            linewidth=1.2,
+            linestyle=":",
+            alpha=0.85,
+            label="Minimum Δp",
+        )
+
+        ax.axhline(0.0, linewidth=0.8, alpha=0.6)
+        ax.axvline(19.0, linewidth=1.1, linestyle="--", alpha=0.8)
+        ax.text(
+            19.0,
+            0.98,
+            "Injection stops",
+            transform=ax.get_xaxis_transform(),
+            ha="right",
+            va="top",
+            fontsize=9.5,
+        )
+
         ax.set_xlabel("Time [h]")
         ax.set_ylabel("Pore-pressure change, Δp [MPa]")
         ax.set_title(
-            f"{region.name}: cell-centered pore-pressure response\n"
-            f"{cell_count:,} injector cells; baseline = first flow snapshot at {baseline_time:g} h"
+            f"{region.name}: injector pore-pressure change\n"
+            f"Mapped from {cell_count:,} flow cells; reference = {baseline_time:g} h"
         )
         ax.grid(True)
-        ax.xaxis.set_major_locator(MaxNLocator(nbins=8))
-        ax.legend(loc="best", frameon=True)
-        outputs = save_figure(fig, output_base, formats, dpi)
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=9))
+        ax.legend(loc="upper right", frameon=True)
 
+        outputs.extend(
+            save_figure(
+                fig,
+                output_base.with_name(output_base.name + "_change_full_history"),
+                formats,
+                dpi,
+            )
+        )
+
+    # Post-shut-in view. Use the actual 19-h-or-later snapshots, which makes
+    # the pressure relaxation tail readable in kPa.
+    shutin_mask = times >= 19.0
+    if np.count_nonzero(shutin_mask) >= 2:
+        t_relax = times[shutin_mask]
+        mean_relax = mean_change_pa[shutin_mask] / 1.0e3
+        median_relax = median_change_pa[shutin_mask] / 1.0e3
+        p05_relax = p05_change_pa[shutin_mask] / 1.0e3
+        p95_relax = p95_change_pa[shutin_mask] / 1.0e3
+        min_relax = min_change_pa[shutin_mask] / 1.0e3
+        max_relax = max_change_pa[shutin_mask] / 1.0e3
+
+        with plt.rc_context(PLOT_RC):
+            fig, ax = plt.subplots(figsize=(10.5, 6.4), constrained_layout=True)
+            ax.fill_between(
+                t_relax,
+                p05_relax,
+                p95_relax,
+                alpha=0.16,
+                label="5th–95th percentile",
+            )
+            ax.plot(
+                t_relax,
+                mean_relax,
+                linewidth=2.8,
+                marker="o",
+                markevery=max(1, len(t_relax) // 10),
+                label="Mean Δp",
+            )
+            ax.plot(
+                t_relax,
+                median_relax,
+                linewidth=2.0,
+                linestyle="--",
+                marker="s",
+                markevery=max(1, len(t_relax) // 10),
+                label="Median Δp",
+            )
+            ax.plot(
+                t_relax,
+                max_relax,
+                linewidth=1.4,
+                linestyle="-.",
+                alpha=0.85,
+                label="Maximum Δp",
+            )
+            ax.plot(
+                t_relax,
+                min_relax,
+                linewidth=1.2,
+                linestyle=":",
+                alpha=0.85,
+                label="Minimum Δp",
+            )
+            ax.axhline(0.0, linewidth=0.8, alpha=0.6)
+            ax.axvline(19.0, linewidth=1.1, linestyle="--", alpha=0.8)
+            ax.text(
+                19.0,
+                0.98,
+                "Injection stops",
+                transform=ax.get_xaxis_transform(),
+                ha="right",
+                va="top",
+                fontsize=9.5,
+            )
+            ax.set_xlabel("Time [h]")
+            ax.set_ylabel("Pore-pressure change, Δp [kPa]")
+            ax.set_title(
+                f"{region.name}: post-shut-in pore-pressure relaxation\n"
+                "Injector region defined by injection_borehole.vset + flow/mechanics mapping"
+            )
+            ax.grid(True)
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=9))
+            ax.legend(loc="upper right", frameon=True)
+
+            outputs.extend(
+                save_figure(
+                    fig,
+                    output_base.with_name(output_base.name + "_change_post_shut_in"),
+                    formats,
+                    dpi,
+                )
+            )
+
+    # Retain the absolute-pressure diagnostic plot.
     with plt.rc_context(PLOT_RC):
-        fig, ax = plt.subplots(figsize=(10.2, 6.2), constrained_layout=True)
-        markevery = max(1, len(times) // 10)
-        ax.plot(times, pressure_mean / 1.0e6, marker="o", markevery=markevery,
-                linewidth=2.3, label="mean liquid pressure")
-        ax.plot(times, pressure_center / 1.0e6, linestyle=":", linewidth=2.0,
-                label=f"representative-cell pressure (cell {center_cell_id})")
-        ax.plot(times, pressure_max / 1.0e6, linestyle="-.", linewidth=1.0,
-                alpha=0.7, label="maximum liquid pressure")
-        ax.axvline(19.0, linewidth=1.0, linestyle="--", alpha=0.7)
-        ax.text(19.0, 0.98, "Injection stops", transform=ax.get_xaxis_transform(),
-                ha="right", va="top", fontsize=9)
+        fig, ax = plt.subplots(figsize=(10.5, 6.4), constrained_layout=True)
+        ax.fill_between(
+            times,
+            pressure_p05 / 1.0e6,
+            pressure_p95 / 1.0e6,
+            alpha=0.14,
+            label="5th–95th percentile",
+        )
+        ax.plot(
+            times,
+            pressure_mean / 1.0e6,
+            linewidth=2.6,
+            marker="o",
+            markevery=max(1, len(times) // 12),
+            label="Mean liquid pressure",
+        )
+        ax.plot(
+            times,
+            pressure_median / 1.0e6,
+            linewidth=1.9,
+            linestyle="--",
+            marker="s",
+            markevery=max(1, len(times) // 12),
+            label="Median liquid pressure",
+        )
+        ax.plot(
+            times,
+            pressure_max / 1.0e6,
+            linewidth=1.3,
+            linestyle="-.",
+            alpha=0.8,
+            label="Maximum liquid pressure",
+        )
+        ax.plot(
+            times,
+            pressure_min / 1.0e6,
+            linewidth=1.1,
+            linestyle=":",
+            alpha=0.8,
+            label="Minimum liquid pressure",
+        )
+        ax.axvline(19.0, linewidth=1.1, linestyle="--", alpha=0.8)
+        ax.text(
+            19.0,
+            0.98,
+            "Injection stops",
+            transform=ax.get_xaxis_transform(),
+            ha="right",
+            va="top",
+            fontsize=9.5,
+        )
         ax.set_xlabel("Time [h]")
         ax.set_ylabel("Liquid pressure [MPa]")
         ax.set_title(
-            f"{region.name}: cell-centered liquid pressure\n"
-            f"{cell_count:,} injector cells; representative cell {center_cell_id} "
-            "selected by median baseline-pressure ordering"
+            f"{region.name}: injector liquid pressure\n"
+            f"Mapped from {cell_count:,} flow cells"
         )
         ax.grid(True)
-        ax.xaxis.set_major_locator(MaxNLocator(nbins=8))
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=9))
         ax.legend(loc="best", frameon=True)
         outputs.extend(
             save_figure(
-                fig, output_base.with_name(output_base.name + "_absolute"),
-                formats, dpi,
+                fig,
+                output_base.with_name(output_base.name + "_absolute"),
+                formats,
+                dpi,
             )
         )
 
