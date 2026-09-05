@@ -1,27 +1,46 @@
 #!/usr/bin/env python3
-"""
-Build a PFLOTRAN surrogate-training dataset from a single continuous run.
+"""Generate a North Avant V5 surrogate-training dataset.
 
-Workflow:
-- one coupled PFLOTRAN deck per sample
-- injection active from 0 to 19 h
-- shut-in from 19 to 96 h in the same run
-- no checkpoint / restart handoff
-- Latin hypercube sampling over four layer permeabilities + HEC permeability
+This version is tailored to the validated V5 continuous 96-hour
+flow + two-way geomechanics workflow.
 
-This version is Python 3.6 compatible:
-- no SciPy dependency
-- no from __future__ import annotations
-- no X | Y type syntax
-
-Assumptions for the current Bartlesville HEC workflow:
-- the working deck template is geomech_inj_rec.in
-- the mesh files are bartlesville_hec.uge / bartlesville_hec.ugi
-- geomechanics gravity is off
-- coupling timestep is 1.d-3 hour
-- sampled materials are:
+Surrogate inputs
+----------------
+Only five hydraulic permeability scalars are sampled by Latin hypercube:
     overburden, bartlesville_sand, basal_layer, underburden, hec
+
+The mechanical model is inherited unchanged from the deck template.  In the
+current production baseline this includes the site-specific AVN87 mechanics:
+    E = 15 GPa, nu = 0.28, Biot = 0.8
+
+Injector pressure observable
+----------------------------
+The authoritative injector flow-cell definition is the flow HDF5 MATERIAL_ID
+field, with MATERIAL_ID == 6 because the production deck defines
+injection_borehole as material ID 6.
+
+For those flow cells:
+    Delta_p_i(t) = LIQUID_PRESSURE_i(t) - LIQUID_PRESSURE_i(0)
+
+The script reports mean, median, P05, P95, min, max, and standard deviation
+of Delta-p over the injection-borehole cells.
+
+A mechanics-to-flow mapping audit is also performed when possible.  It is an
+independent check only; it does not define the pressure cells.
+
+Strain observables
+------------------
+AVN2, AVN31, and AVN87 are kept as separate stations.  Each station uses its
+own vset and stores all six strain-tensor components plus volumetric strain.
+
+Numerical execution
+-------------------
+Each realization is one full 96-hour PFLOTRAN run using the current production
+deck, normally launched as 1 node / 64 MPI ranks.  Per-sample NPZ files make
+the dataset resumable.
 """
+
+from __future__ import annotations
 
 import argparse
 import csv
@@ -38,6 +57,10 @@ import h5py
 import numpy as np
 
 
+# -----------------------------------------------------------------------------
+# Surrogate inputs
+# -----------------------------------------------------------------------------
+
 MATERIALS = [
     "overburden",
     "bartlesville_sand",
@@ -46,8 +69,9 @@ MATERIALS = [
     "hec",
 ]
 
-# Current baseline permeability tensors from the working deck.
-# We preserve anisotropy by scaling the whole tensor with one scalar factor.
+# Baseline flow tensors from the validated V5 production deck.
+# Each LHS scalar changes the horizontal permeability and preserves the
+# baseline anisotropy ratio in z.
 BASE_TENSORS = {
     "overburden": (9.869233e-18, 9.869233e-18, 9.869233e-19),
     "bartlesville_sand": (4.9346165e-15, 4.9346165e-15, 4.9346165e-17),
@@ -56,8 +80,8 @@ BASE_TENSORS = {
     "hec": (4.9346165e-13, 4.9346165e-13, 9.869233e-17),
 }
 
-# Log10 bounds for the scalar permeability target values.
-# The HEC bounds are centered around the current HEC magnitude.
+# Conservative initial hydraulic ranges from the previous surrogate workflow.
+# These are sensitivity ranges, not claims of exact in-situ values.
 LOG10_TARGET_BOUNDS = {
     "overburden": (-18.0, -16.0),
     "bartlesville_sand": (-14.0, -12.0),
@@ -66,58 +90,25 @@ LOG10_TARGET_BOUNDS = {
     "hec": (-13.0, -12.0),
 }
 
-# Observation locations are read from mesh-region .vset files at runtime.
-PRESSURE_OBSERVATION_VSET = "injection_borehole.vset"
-STRAIN_OBSERVATION_VSETS = [
-    "AVN2.vset",
-    "AVN31.vset",
-    "AVN87.vset",
-]
-
-STRAIN_COMPONENTS = [
-    "strain_xx", "strain_yy", "strain_zz",
-    "strain_xy", "strain_yz", "strain_zx",
-]
-
-PRESSURE_DATASET_CANDIDATES = [
-    "LIQUID_PRESSURE",
-    "Liquid Pressure [Pa]",
-    "Liquid Pressure",
-]
-
-STRAIN_DATASET_CANDIDATES = [
-    "strain_xx", "strain_yy", "strain_zz",
-    "strain_xy", "strain_yz", "strain_zx",
-    "GEOMECH_STRAIN_XX", "GEOMECH_STRAIN_YY", "GEOMECH_STRAIN_ZZ",
-    "GEOMECH_STRAIN_XY", "GEOMECH_STRAIN_YZ", "GEOMECH_STRAIN_ZX",
-    "STRAIN_XX", "STRAIN_YY", "STRAIN_ZZ",
-    "STRAIN_XY", "STRAIN_YZ", "STRAIN_ZX",
-]
+DECK_DEFAULT = "north_avant_v5_twoway_production_96h_final.in"
 
 STATIC_FILES = [
-    # Flow / mechanics mesh and mapping
-    "bartlesville_hec.uge",
-    "bartlesville_hec.ugi",
-    "bartlesville_hec.mapping",
-    "bartlesville_hec_material_ids.h5",
-
-    # Flow boundary face sets
-    "top.ex",
-    "bottom.ex",
-    "north.ex",
-    "south.ex",
-    "east.ex",
-    "west.ex",
-
-    # Geomechanics boundary region sets
+    "bartlesville_hec_lime_v5_interfaces_median.uge",
+    "bartlesville_hec_lime_v5_interfaces.ugi",
+    "bartlesville_hec_lime_v5_interfaces_median.mapping",
+    "bartlesville_hec_lime_v5_interfaces_material_ids.h5",
+    "boundary_ex_v5/top.ex",
+    "boundary_ex_v5/bottom.ex",
+    "boundary_ex_v5/north.ex",
+    "boundary_ex_v5/south.ex",
+    "boundary_ex_v5/east.ex",
+    "boundary_ex_v5/west.ex",
     "top.vset",
     "bottom.vset",
     "north.vset",
     "south.vset",
     "east.vset",
     "west.vset",
-
-    # Geomechanics strata and special regions
     "overburden.vset",
     "bartlesville_sand.vset",
     "basal_layer.vset",
@@ -130,46 +121,100 @@ STATIC_FILES = [
     "AVN31.vset",
 ]
 
+PRESSURE_OBSERVATION_VSET = "injection_borehole.vset"
+STRAIN_OBSERVATION_VSETS = {
+    "AVN2": "AVN2.vset",
+    "AVN31": "AVN31.vset",
+    "AVN87": "AVN87.vset",
+}
+
+# The flow deck defines injection_borehole as ID 6.
+INJECTION_MATERIAL_ID = 6
+
+STRAIN_COMPONENTS = (
+    "strain_xx",
+    "strain_yy",
+    "strain_zz",
+    "strain_xy",
+    "strain_yz",
+    "strain_zx",
+)
+
+STRAIN_DATASET_CANDIDATES = [
+    "strain_xx", "strain_yy", "strain_zz",
+    "strain_xy", "strain_yz", "strain_zx",
+    "GEOMECH_STRAIN_XX", "GEOMECH_STRAIN_YY", "GEOMECH_STRAIN_ZZ",
+    "GEOMECH_STRAIN_XY", "GEOMECH_STRAIN_YZ", "GEOMECH_STRAIN_ZX",
+    "STRAIN_XX", "STRAIN_YY", "STRAIN_ZZ",
+    "STRAIN_XY", "STRAIN_YZ", "STRAIN_ZX",
+]
+
+PRESSURE_DATASET_CANDIDATES = [
+    "LIQUID_PRESSURE",
+    "Liquid Pressure [Pa]",
+    "Liquid Pressure",
+]
+
+MATERIAL_ID_DATASET_CANDIDATES = [
+    "MATERIAL_ID",
+    "Material ID",
+    "Material ID []",
+    "MaterialID",
+]
+
+TARGET_TIMES_H = np.array([
+    0.0, 18.0, 18.94, 19.06, 19.25,
+    19.50, 20.0, 22.0, 24.0, 36.0,
+    48.0, 60.0, 72.0, 84.0, 96.0,
+], dtype=float)
+
+TIME_TOL_H = 2.0e-5
+
+
+# -----------------------------------------------------------------------------
+# Arguments
+# -----------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Generate a PFLOTRAN surrogate dataset from a single continuous coupled run."
+    p = argparse.ArgumentParser(
+        description="Generate North Avant V5 surrogate-training data."
     )
-    parser.add_argument("--model-dir", type=str, default=".", help="Directory containing the PFLOTRAN input files.")
-    parser.add_argument("--out-dir", type=str, default="./surrogate_dataset", help="Output dataset directory.")
-    parser.add_argument("--n-samples", type=int, default=20, help="Number of Latin hypercube samples.")
-    parser.add_argument("--seed", type=int, default=1234, help="Random seed for the LHS sampler.")
-    parser.add_argument(
+    p.add_argument("--model-dir", default=".")
+    p.add_argument("--out-dir", default=None)
+    p.add_argument("--n-samples", type=int, default=32)
+    p.add_argument("--seed", type=int, default=1234)
+    p.add_argument(
         "--nprocs",
         type=int,
         default=int(os.environ.get("SLURM_NTASKS", "64")),
-        help="MPI ranks to use per PFLOTRAN run.",
     )
-    parser.add_argument(
+    p.add_argument(
         "--pflotran-bin",
-        type=str,
         default=os.environ.get("PFLOTRAN_BIN", "pflotran"),
-        help="Path to the PFLOTRAN executable.",
     )
-    parser.add_argument("--mpiexec", type=str, default="mpiexec", help="MPI launcher command.")
-    parser.add_argument(
-        "--deck-template",
-        type=str,
-        default="geomech_inj_rec.in",
-        help="Template deck filename to patch for each sample.",
+    p.add_argument(
+        "--mpiexec",
+        default=os.environ.get(
+            "MPIEXEC",
+            "/home/harhin/PFLOTRAN/petsc/arch-linux-c-opt/bin/mpiexec.hydra",
+        ),
     )
-    parser.add_argument(
-        "--copy-static",
+    p.add_argument("--deck-template", default=DECK_DEFAULT)
+    p.add_argument("--copy-static", action="store_true")
+    p.add_argument("--keep-runs", action="store_true")
+    p.add_argument("--resume", action="store_true")
+    p.add_argument("--allow-failures", action="store_true")
+    p.add_argument(
+        "--skip-mapping-audit",
         action="store_true",
-        help="Copy static files instead of symlinking them.",
+        help="Do not perform the independent mechanics-to-flow mapping audit.",
     )
-    parser.add_argument(
-        "--keep-runs",
-        action="store_true",
-        help="Keep sample run directories after successful extraction.",
-    )
-    return parser.parse_args()
+    return p.parse_args()
 
+
+# -----------------------------------------------------------------------------
+# File helpers
+# -----------------------------------------------------------------------------
 
 def safe_unlink(path: Path) -> None:
     if not path.exists() and not path.is_symlink():
@@ -182,6 +227,7 @@ def safe_unlink(path: Path) -> None:
 
 def link_or_copy(src: Path, dst: Path, copy_mode: bool) -> None:
     safe_unlink(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
     if copy_mode:
         if src.is_dir():
             shutil.copytree(str(src), str(dst))
@@ -191,307 +237,554 @@ def link_or_copy(src: Path, dst: Path, copy_mode: bool) -> None:
         os.symlink(str(src.resolve()), str(dst))
 
 
-def write_text(path: Path, text: str) -> None:
-    path.write_text(text, encoding="utf-8")
-
-
 def normalize_name(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", name.lower())
 
 
+# -----------------------------------------------------------------------------
+# VSET / mapping parsing
+# -----------------------------------------------------------------------------
 
-def load_vset_indices(vset_path: Path) -> np.ndarray:
-    """
-    Load integer indices from a .vset file.
-
-    The parser accepts whitespace-separated integer tokens and ignores
-    alphabetic labels such as region names.
-    """
-    if not vset_path.exists():
-        raise FileNotFoundError("Missing vset file: {}".format(vset_path))
-
-    indices = []
-    with vset_path.open("r", encoding="utf-8", errors="ignore") as f:
-        for raw_line in f:
-            for token in raw_line.split():
+def parse_integer_tokens(path: Path) -> List[int]:
+    values: List[int] = []
+    with path.open("r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.split("#", 1)[0]
+            for token in line.split():
                 if re.fullmatch(r"[+-]?\d+", token):
-                    indices.append(int(token))
-
-    if not indices:
-        raise RuntimeError("No integer indices found in {}".format(vset_path))
-
-    # Deterministic uniqueness while preserving first appearance.
-    seen = set()
-    unique = []
-    for idx in indices:
-        if idx not in seen:
-            seen.add(idx)
-            unique.append(idx)
-    return np.asarray(unique, dtype=int)
+                    values.append(int(token))
+    return values
 
 
-def load_observation_indices(sample_dir: Path) -> Tuple[np.ndarray, np.ndarray]:
+def load_vset_ids(path: Path) -> np.ndarray:
+    """Load node IDs from a vset, handling the common count-first format.
+
+    If the first integer equals the number of remaining integers, it is treated
+    as a count/header rather than a node ID.  Otherwise all integers are treated
+    as IDs.  The returned IDs remain in the file's original 1-based/0-based
+    convention; conversion is handled later where the target array size is known.
     """
-    Return (pressure_indices, strain_indices) from the sample directory.
+    values = parse_integer_tokens(path)
+    if not values:
+        raise RuntimeError("No integer IDs found in {}".format(path))
+    if len(values) >= 2 and values[0] == len(values) - 1:
+        values = values[1:]
+    return np.unique(np.asarray(values, dtype=np.int64))
+
+
+def convert_ids_to_zero_based(ids: np.ndarray, upper_bound: int, label: str) -> Tuple[np.ndarray, str]:
+    ids = np.asarray(ids, dtype=np.int64)
+    if ids.size == 0:
+        raise RuntimeError("{} contains no IDs".format(label))
+
+    if ids.min() >= 0 and ids.max() < upper_bound:
+        return ids.copy(), "0-based"
+    if ids.min() >= 1 and ids.max() <= upper_bound:
+        return ids - 1, "1-based"
+
+    raise IndexError(
+        "{} contains IDs outside valid range 0..{} or 1..{}; min={}, max={}".format(
+            label,
+            upper_bound - 1,
+            upper_bound,
+            int(ids.min()),
+            int(ids.max()),
+        )
+    )
+
+
+def read_mapping(path: Path) -> Tuple[np.ndarray, np.ndarray]:
+    data = np.loadtxt(path, dtype=np.int64)
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+    if data.shape[1] < 2:
+        raise RuntimeError("Mapping must have at least two columns")
+
+    flow_ids = data[:, 0]
+    mech_ids = data[:, 1]
+
+    if np.unique(flow_ids).size != flow_ids.size:
+        raise RuntimeError("Duplicate flow IDs in mapping")
+    if np.unique(mech_ids).size != mech_ids.size:
+        raise RuntimeError("Duplicate mechanics IDs in mapping")
+    if flow_ids.min() < 1 or mech_ids.min() < 1:
+        raise RuntimeError("Mapping IDs are expected to be 1-based positive integers")
+
+    return flow_ids - 1, mech_ids - 1
+
+
+def audit_injector_mapping(
+    model_dir: Path,
+    mapping_path: Path,
+    injector_vset: Path,
+    material_flow_ids: np.ndarray,
+) -> Dict[str, object]:
+    """Independent audit: mechanics vset -> mapping -> flow IDs.
+
+    This audit never defines the pressure cells.  The pressure cells are always
+    obtained from MATERIAL_ID == 6 in the flow HDF5.
     """
-    pressure_idx = load_vset_indices(sample_dir / PRESSURE_OBSERVATION_VSET)
+    flow_ids, mech_ids = read_mapping(mapping_path)
 
-    strain_chunks = []
-    for vset_name in STRAIN_OBSERVATION_VSETS:
-        strain_chunks.append(load_vset_indices(sample_dir / vset_name))
+    # The mapping is 0-based after read_mapping.  Infer the mechanics ID space
+    # from the maximum mapped ID and convert the vset conservatively.
+    mech_count = int(mech_ids.max()) + 1
+    inj_mech_raw = load_vset_ids(injector_vset)
+    inj_mech_zero, vset_base = convert_ids_to_zero_based(
+        inj_mech_raw,
+        mech_count,
+        "{} mechanics IDs".format(injector_vset.name),
+    )
 
-    if not strain_chunks:
-        raise RuntimeError("No strain observation vsets configured.")
+    lookup = {int(m): int(f) for f, m in zip(flow_ids, mech_ids)}
+    mapped = [lookup[int(m)] for m in inj_mech_zero if int(m) in lookup]
+    mapped = np.unique(np.asarray(mapped, dtype=np.int64))
 
-    strain_idx = np.unique(np.concatenate(strain_chunks).astype(int))
-    return pressure_idx, strain_idx
+    material_set = set(int(x) for x in np.asarray(material_flow_ids, dtype=np.int64))
+    mapped_set = set(int(x) for x in mapped)
 
+    intersection = mapped_set.intersection(material_set)
+    mapping_only = mapped_set.difference(material_set)
+    material_only = material_set.difference(mapped_set)
+
+    return {
+        "vset_indexing": vset_base,
+        "injector_mechanics_vertices": int(inj_mech_zero.size),
+        "mapped_flow_cells": int(mapped.size),
+        "material_id_flow_cells": int(material_flow_ids.size),
+        "intersection": int(len(intersection)),
+        "mapping_only": int(len(mapping_only)),
+        "material_only": int(len(material_only)),
+        "sets_match": mapped_set == material_set,
+        "mapped_flow_cell_ids_0based": mapped,
+    }
+
+
+# -----------------------------------------------------------------------------
+# Latin hypercube
+# -----------------------------------------------------------------------------
 
 def generate_lhs_unit_samples(n_samples: int, n_dim: int, seed: int) -> np.ndarray:
     rng = np.random.RandomState(seed)
-    u = np.empty((n_samples, n_dim), dtype=float)
-
+    unit = np.empty((n_samples, n_dim), dtype=float)
     for j in range(n_dim):
-        cut = np.linspace(0.0, 1.0, n_samples + 1)
-        pts = cut[:-1] + rng.rand(n_samples) * (cut[1:] - cut[:-1])
+        cuts = np.linspace(0.0, 1.0, n_samples + 1)
+        pts = cuts[:-1] + rng.rand(n_samples) * (cuts[1:] - cuts[:-1])
         rng.shuffle(pts)
-        u[:, j] = pts
-
-    return u
+        unit[:, j] = pts
+    return unit
 
 
 def generate_lhs_log10_samples(
     n_samples: int,
-    bounds_log10: Dict[str, Tuple[float, float]],
+    bounds: Dict[str, Tuple[float, float]],
     seed: int,
 ) -> Tuple[np.ndarray, List[str]]:
     names = MATERIALS[:]
-    lower = np.array([bounds_log10[m][0] for m in names], dtype=float)
-    upper = np.array([bounds_log10[m][1] for m in names], dtype=float)
-
-    unit = generate_lhs_unit_samples(n_samples=n_samples, n_dim=len(names), seed=seed)
-    scaled = lower + unit * (upper - lower)
-    return scaled, names
+    low = np.array([bounds[m][0] for m in names], dtype=float)
+    high = np.array([bounds[m][1] for m in names], dtype=float)
+    unit = generate_lhs_unit_samples(n_samples, len(names), seed)
+    return low + unit * (high - low), names
 
 
-def replace_perm_tensor_in_block(text: str, material_name: str,
-                                 perm_x: float, perm_y: float, perm_z: float) -> str:
-    """
-    Replace PERM_X / PERM_Y / PERM_Z inside a MATERIAL_PROPERTY block.
-    """
+# -----------------------------------------------------------------------------
+# Deck editing
+# -----------------------------------------------------------------------------
+
+def replace_perm_tensor_in_block(
+    text: str,
+    material_name: str,
+    perm_x: float,
+    perm_y: float,
+    perm_z: float,
+) -> str:
     lines = text.splitlines(True)
     start = None
-    mat_pat = re.compile(r"^\s*MATERIAL_PROPERTY\s+{}\s*$".format(re.escape(material_name)))
-    end_pat = re.compile(r"^\s*END\s*$")
-    perm_x_pat = re.compile(r"^\s*PERM_X\b")
-    perm_y_pat = re.compile(r"^\s*PERM_Y\b")
-    perm_z_pat = re.compile(r"^\s*PERM_Z\b")
+    block_re = re.compile(r"^\s*MATERIAL_PROPERTY\s+{}\s*$".format(re.escape(material_name)))
 
     for i, line in enumerate(lines):
-        if mat_pat.match(line):
+        if block_re.match(line):
             start = i
             break
 
     if start is None:
-        raise RuntimeError("Could not find MATERIAL_PROPERTY block for material '{}'.".format(material_name))
+        raise RuntimeError("Missing MATERIAL_PROPERTY block: {}".format(material_name))
 
     end = None
     for j in range(start + 1, len(lines)):
-        if end_pat.match(lines[j]):
+        if re.match(r"^\s*END\s*$", lines[j]):
             end = j
             break
 
     if end is None:
-        raise RuntimeError("Could not find END for MATERIAL_PROPERTY block '{}'.".format(material_name))
+        raise RuntimeError("Missing END for material block: {}".format(material_name))
 
-    found_x = found_y = found_z = False
+    found = {"x": False, "y": False, "z": False}
+    vals = {"x": perm_x, "y": perm_y, "z": perm_z}
+
     for k in range(start + 1, end):
-        if perm_x_pat.match(lines[k]):
-            indent = re.match(r"^(\s*)", lines[k]).group(1)
-            lines[k] = "{}PERM_X {:.6e}\n".format(indent, perm_x)
-            found_x = True
-        elif perm_y_pat.match(lines[k]):
-            indent = re.match(r"^(\s*)", lines[k]).group(1)
-            lines[k] = "{}PERM_Y {:.6e}\n".format(indent, perm_y)
-            found_y = True
-        elif perm_z_pat.match(lines[k]):
-            indent = re.match(r"^(\s*)", lines[k]).group(1)
-            lines[k] = "{}PERM_Z {:.6e}\n".format(indent, perm_z)
-            found_z = True
+        for axis in ("x", "y", "z"):
+            if re.match(r"^\s*PERM_{}\b".format(axis.upper()), lines[k]):
+                indent = re.match(r"^(\s*)", lines[k]).group(1)
+                lines[k] = "{}PERM_{} {:.9e}\n".format(
+                    indent, axis.upper(), vals[axis]
+                )
+                found[axis] = True
 
-    if not (found_x and found_y and found_z):
-        raise RuntimeError(
-            "Could not find all PERM_X/PERM_Y/PERM_Z lines for material '{}'.".format(material_name)
-        )
+    if not all(found.values()):
+        raise RuntimeError("Incomplete permeability block: {}".format(material_name))
 
     return "".join(lines)
 
 
-def find_time_groups(h5obj: h5py.File, dataset_candidates: Sequence[str]) -> List[Tuple[float, str]]:
-    """
-    Find time groups that contain one of the candidate datasets.
-    Returns [(time_hours, group_path), ...].
-    """
-    groups = []
-    norm_cands = [normalize_name(c) for c in dataset_candidates]
+# -----------------------------------------------------------------------------
+# HDF5 helpers
+# -----------------------------------------------------------------------------
 
-    def parse_time_from_group_name(group_name: str) -> Optional[float]:
-        m = re.search(r"Time\s+([+-]?\d*\.?\d+(?:[Ee][+-]?\d+)?)\s*h", group_name)
-        if not m:
-            return None
-        try:
-            return float(m.group(1))
-        except ValueError:
-            return None
-
-    def visitor(name, obj):
-        if not isinstance(obj, h5py.Group):
-            return
-        if "Time" not in name:
-            return
-
-        has_candidate = False
-
-        for leaf_name in obj.keys():
-            leaf_norm = normalize_name(leaf_name)
-            if leaf_norm in norm_cands:
-                has_candidate = True
-                break
-
-        if not has_candidate:
-            def leaf_visitor(subname, subobj):
-                nonlocal has_candidate
-                if has_candidate:
-                    return
-                if isinstance(subobj, h5py.Dataset):
-                    leaf_norm = normalize_name(Path(subname).name)
-                    for cand in norm_cands:
-                        if cand == leaf_norm or cand in leaf_norm or leaf_norm in cand:
-                            has_candidate = True
-                            return
-            obj.visititems(leaf_visitor)
-
-        if not has_candidate:
-            return
-
-        t = parse_time_from_group_name(Path(name).name)
-        if t is not None:
-            groups.append((t, name))
-
-    h5obj.visititems(visitor)
-
-    dedup = {}
-    for t, p in groups:
-        dedup[p] = t
-
-    return sorted([(t, p) for p, t in dedup.items()], key=lambda x: x[0])
+def parse_time_from_group_name(name: str) -> Optional[float]:
+    m = re.search(
+        r"Time\s+([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[EeDd][+-]?\d+)?)\s*h",
+        name,
+    )
+    if not m:
+        return None
+    return float(m.group(1).replace("D", "E").replace("d", "e"))
 
 
 def find_dataset_in_group(group: h5py.Group, candidates: Sequence[str]) -> np.ndarray:
-    """
-    Return the first matching dataset inside a group (recursive search).
-    """
-    norm_cands = [normalize_name(c) for c in candidates]
-    found = None
+    norm = [normalize_name(c) for c in candidates]
+    result = None
 
     def visitor(name, obj):
-        nonlocal found
-        if found is not None:
+        nonlocal result
+        if result is not None or not isinstance(obj, h5py.Dataset):
             return
-        if isinstance(obj, h5py.Dataset):
-            leaf_norm = normalize_name(Path(name).name)
-            for cand in norm_cands:
-                if cand == leaf_norm or cand in leaf_norm or leaf_norm in cand:
-                    found = np.asarray(obj, dtype=float)
-                    return
+        leaf = normalize_name(Path(name).name)
+        if any(c == leaf or c in leaf or leaf in c for c in norm):
+            result = np.asarray(obj[...], dtype=float).reshape(-1)
 
     group.visititems(visitor)
+    if result is None:
+        raise KeyError(
+            "No dataset found in '{}' for candidates {}".format(group.name, candidates)
+        )
+    return result
 
-    if found is None:
-        raise KeyError("None of the candidate datasets were found: {}".format(candidates))
-    return found
+
+def find_dataset_global(h5obj: h5py.File, candidates: Sequence[str]) -> np.ndarray:
+    """Search the entire HDF5 file for a dataset matching candidates."""
+    norm = [normalize_name(c) for c in candidates]
+    result = None
+
+    def visitor(name, obj):
+        nonlocal result
+        if result is not None or not isinstance(obj, h5py.Dataset):
+            return
+        leaf = normalize_name(Path(name).name)
+        if any(c == leaf or c in leaf or leaf in c for c in norm):
+            result = np.asarray(obj[...], dtype=float).reshape(-1)
+
+    h5obj.visititems(visitor)
+    if result is None:
+        raise KeyError("No dataset found anywhere for candidates {}".format(candidates))
+    return result
 
 
-def compute_well_stats_at_time(arr: np.ndarray, well_idx: np.ndarray) -> Dict[str, float]:
-    values = arr[well_idx]
+def find_time_groups(
+    h5obj: h5py.File,
+    required_candidates: Sequence[str],
+) -> List[Tuple[float, str]]:
+    norm = [normalize_name(c) for c in required_candidates]
+    found: List[Tuple[float, str]] = []
+
+    def visitor(name, obj):
+        if not isinstance(obj, h5py.Group) or "Time" not in name:
+            return
+
+        has = False
+        for child in obj.keys():
+            if normalize_name(child) in norm:
+                has = True
+                break
+
+        if not has:
+            def nested(subname, subobj):
+                nonlocal has
+                if has or not isinstance(subobj, h5py.Dataset):
+                    return
+                leaf = normalize_name(Path(subname).name)
+                if any(c == leaf or c in leaf or leaf in c for c in norm):
+                    has = True
+
+            obj.visititems(nested)
+
+        if has:
+            t = parse_time_from_group_name(Path(name).name)
+            if t is not None:
+                found.append((t, name))
+
+    h5obj.visititems(visitor)
+    return sorted(found, key=lambda x: x[0])
+
+
+def select_target_groups(
+    groups: List[Tuple[float, str]],
+    targets: np.ndarray,
+    label: str,
+) -> List[Tuple[float, str]]:
+    if not groups:
+        raise RuntimeError("{} contains no recognized time groups".format(label))
+
+    available = np.asarray([g[0] for g in groups], dtype=float)
+    selected: List[Tuple[float, str]] = []
+
+    for target in targets:
+        i = int(np.argmin(np.abs(available - target)))
+        err = abs(float(available[i] - target))
+        if err > TIME_TOL_H:
+            raise RuntimeError(
+                "{} missing requested time {} h; nearest is {} h".format(
+                    label, target, available[i]
+                )
+            )
+        selected.append(groups[i])
+
+    return selected
+
+
+# -----------------------------------------------------------------------------
+# Injector pressure extraction
+# -----------------------------------------------------------------------------
+
+def get_flow_pressure_and_material_id(
+    h5: h5py.File,
+    group_path: str,
+) -> Tuple[np.ndarray, np.ndarray]:
+    group = h5[group_path]
+
+    pressure = find_dataset_in_group(group, PRESSURE_DATASET_CANDIDATES)
+
+    try:
+        material_id = find_dataset_in_group(group, MATERIAL_ID_DATASET_CANDIDATES)
+    except KeyError:
+        # Some PFLOTRAN layouts can store a static material ID array outside
+        # the time group.  Use that only as a fallback.
+        material_id = find_dataset_global(h5, MATERIAL_ID_DATASET_CANDIDATES)
+
+    return pressure, material_id
+
+
+def compute_stats(values: np.ndarray) -> Dict[str, float]:
+    values = np.asarray(values, dtype=float)
     return {
+        "mean": float(np.nanmean(values)),
         "median": float(np.nanmedian(values)),
+        "p05": float(np.nanpercentile(values, 5.0)),
+        "p95": float(np.nanpercentile(values, 95.0)),
         "min": float(np.nanmin(values)),
         "max": float(np.nanmax(values)),
+        "std": float(np.nanstd(values)),
     }
 
 
-def extract_pressure_series(h5_path: Path, obs_idx: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    with h5py.File(str(h5_path), "r") as f:
-        groups = find_time_groups(f, PRESSURE_DATASET_CANDIDATES)
-        if not groups:
-            raise RuntimeError("No pressure time groups found in {}".format(h5_path))
+def extract_pressure_delta_from_material_id(
+    flow_h5: Path,
+    mapping_path: Optional[Path],
+    injector_vset: Optional[Path],
+    do_mapping_audit: bool,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, np.ndarray], Dict[str, object]]:
+    """Extract injector Delta-p using MATERIAL_ID == 6 as authoritative."""
 
-        times = []
-        med = []
-        pmin = []
-        pmax = []
+    with h5py.File(str(flow_h5), "r") as fh:
+        groups = find_time_groups(
+            fh,
+            PRESSURE_DATASET_CANDIDATES,
+        )
+        selected = select_target_groups(groups, TARGET_TIMES_H, "Flow")
 
-        for t, group_path in groups:
-            grp = f[group_path]
-            pressure = find_dataset_in_group(grp, PRESSURE_DATASET_CANDIDATES)
-            if obs_idx.max() >= len(pressure):
-                raise IndexError(
-                    "Well index out of bounds for pressure array in {} at time {} h.".format(h5_path, t)
+        pressure0, material0 = get_flow_pressure_and_material_id(
+            fh, selected[0][1]
+        )
+
+        if pressure0.size == 0:
+            raise RuntimeError("Empty liquid-pressure array")
+
+        if material0.size != pressure0.size:
+            raise RuntimeError(
+                "Material-ID array size {} does not match pressure array size {}".format(
+                    material0.size, pressure0.size
                 )
-            stats = compute_well_stats_at_time(pressure, obs_idx)
-            times.append(t)
-            med.append(stats["median"])
-            pmin.append(stats["min"])
-            pmax.append(stats["max"])
+            )
 
-    return (
-        np.asarray(times, dtype=float),
-        np.asarray(med, dtype=float),
-        np.asarray(pmin, dtype=float),
-        np.asarray(pmax, dtype=float),
-    )
+        # Material IDs should be integral-valued.
+        if not np.all(np.isfinite(material0)):
+            raise RuntimeError("Material-ID array contains non-finite values")
+        material0_int = np.rint(material0).astype(np.int64)
 
+        injector_flow = np.flatnonzero(
+            material0_int == INJECTION_MATERIAL_ID
+        ).astype(np.int64)
 
-def extract_geomech_series(h5_path: Path, obs_idx: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    with h5py.File(str(h5_path), "r") as f:
-        groups = find_time_groups(f, STRAIN_DATASET_CANDIDATES)
-        if not groups:
-            raise RuntimeError("No geomechanics time groups found in {}".format(h5_path))
+        if injector_flow.size == 0:
+            unique_ids = np.unique(material0_int)
+            raise RuntimeError(
+                "No flow cells with MATERIAL_ID == {}. Available IDs include {}".format(
+                    INJECTION_MATERIAL_ID,
+                    unique_ids[:50].tolist(),
+                )
+            )
 
-        times = []
-        med_strains = []
-        vol_strain = []
+        baseline = pressure0[injector_flow].copy()
 
-        for t, group_path in groups:
-            grp = f[group_path]
-            comp_vals = []
-            for comp in STRAIN_COMPONENTS:
-                candidates = [
-                    comp,
-                    comp.upper(),
-                    comp.replace("_", " "),
-                    "GEOMECH_" + comp.upper(),
-                    "GEOMECH_" + comp.upper().replace("_", " "),
-                ]
-                arr = find_dataset_in_group(grp, candidates)
-                if obs_idx.max() >= len(arr):
-                    raise IndexError(
-                        "Well index out of bounds for strain array in {} at time {} h.".format(h5_path, t)
+        stats = {
+            key: []
+            for key in ("mean", "median", "p05", "p95", "min", "max", "std")
+        }
+        times: List[float] = []
+
+        for t, group_path in selected:
+            pressure, material = get_flow_pressure_and_material_id(fh, group_path)
+
+            if pressure.size != pressure0.size:
+                raise RuntimeError(
+                    "Flow-cell count changed at {} h: {} vs {}".format(
+                        t, pressure.size, pressure0.size
                     )
-                comp_vals.append(float(np.nanmedian(arr[obs_idx])))
+                )
 
-            comp_vals_arr = np.asarray(comp_vals, dtype=float)
-            times.append(t)
-            med_strains.append(comp_vals_arr)
-            vol_strain.append(float(comp_vals_arr[0] + comp_vals_arr[1] + comp_vals_arr[2]))
+            if material.size != material0.size:
+                raise RuntimeError(
+                    "Material-ID count changed at {} h: {} vs {}".format(
+                        t, material.size, material0.size
+                    )
+                )
 
-    return (
-        np.asarray(times, dtype=float),
-        np.asarray(med_strains, dtype=float),
-        np.asarray(vol_strain, dtype=float),
-    )
+            current_material = np.rint(material).astype(np.int64)
+            if not np.array_equal(current_material, material0_int):
+                raise RuntimeError(
+                    "MATERIAL_ID field changed between snapshot times; refusing to use a moving injector definition."
+                )
 
+            dp = pressure[injector_flow] - baseline
+            s = compute_stats(dp)
+            times.append(float(t))
+            for key in stats:
+                stats[key].append(s[key])
+
+        for key in stats:
+            stats[key] = np.asarray(stats[key], dtype=float)
+
+        audit: Dict[str, object] = {
+            "authoritative_definition": "MATERIAL_ID == {}".format(INJECTION_MATERIAL_ID),
+            "material_id": INJECTION_MATERIAL_ID,
+            "flow_cell_count": int(pressure0.size),
+            "injector_flow_cell_count": int(injector_flow.size),
+            "mapping_audit_performed": False,
+        }
+
+        if do_mapping_audit:
+            if mapping_path is None or injector_vset is None:
+                raise RuntimeError("Mapping audit requested but mapping/vset paths were not supplied")
+            audit_result = audit_injector_mapping(
+                flow_h5.parent,
+                mapping_path,
+                injector_vset,
+                injector_flow,
+            )
+            audit.update(audit_result)
+            audit["mapping_audit_performed"] = True
+
+        return np.asarray(times, dtype=float), injector_flow, stats, audit
+
+
+# -----------------------------------------------------------------------------
+# Geomechanics extraction
+# -----------------------------------------------------------------------------
+
+def read_geomech_coordinates(h5: h5py.File) -> np.ndarray:
+    required = ("/Domain/X", "/Domain/Y", "/Domain/Z")
+    if not all(name in h5 for name in required):
+        raise RuntimeError("Geomechanics HDF5 lacks /Domain/X,/Y,/Z")
+    xyz = np.column_stack([
+        np.asarray(h5[name][...], dtype=float).reshape(-1)
+        for name in required
+    ])
+    if xyz.shape[0] == 0 or not np.all(np.isfinite(xyz)):
+        raise RuntimeError("Invalid geomechanics coordinates")
+    return xyz
+
+
+def extract_strain_series(
+    geomech_h5: Path,
+    station_vsets: Dict[str, Path],
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, object]]:
+    with h5py.File(str(geomech_h5), "r") as gh:
+        xyz = read_geomech_coordinates(gh)
+        groups = find_time_groups(gh, STRAIN_DATASET_CANDIDATES)
+        selected = select_target_groups(groups, TARGET_TIMES_H, "Geomechanics")
+
+        stations = list(station_vsets.keys())
+        n_s = len(stations)
+        n_t = len(selected)
+        n_c = len(STRAIN_COMPONENTS)
+
+        mean_arr = np.empty((n_s, n_t, n_c), dtype=float)
+        std_arr = np.empty((n_s, n_t, n_c), dtype=float)
+        vol_arr = np.empty((n_s, n_t), dtype=float)
+        counts: Dict[str, int] = {}
+
+        for si, station in enumerate(stations):
+            raw_ids = load_vset_ids(station_vsets[station])
+            idx, _base = convert_ids_to_zero_based(
+                raw_ids,
+                xyz.shape[0],
+                "{} vset IDs".format(station),
+            )
+            if idx.size == 0:
+                raise RuntimeError("Empty vset for {}".format(station))
+            counts[station] = int(idx.size)
+
+            for ti, (_t, group_path) in enumerate(selected):
+                grp = gh[group_path]
+                vals = np.empty((idx.size, n_c), dtype=float)
+
+                for ci, comp in enumerate(STRAIN_COMPONENTS):
+                    candidates = [
+                        comp,
+                        comp.upper(),
+                        comp.replace("_", " "),
+                        "GEOMECH_" + comp.upper(),
+                        "GEOMECH_" + comp.upper().replace("_", " "),
+                    ]
+                    arr = find_dataset_in_group(grp, candidates)
+                    if idx.max() >= arr.size:
+                        raise IndexError(
+                            "{} indices exceed {} array".format(station, comp)
+                        )
+                    vals[:, ci] = arr[idx]
+
+                mean_arr[si, ti, :] = np.nanmean(vals, axis=0)
+                std_arr[si, ti, :] = np.nanstd(vals, axis=0)
+                vol_arr[si, ti] = float(np.sum(mean_arr[si, ti, 0:3]))
+
+        audit = {
+            "station_node_counts": counts,
+            "station_order": stations,
+            "strain_components": list(STRAIN_COMPONENTS),
+        }
+
+        return (
+            np.asarray([x[0] for x in selected]),
+            mean_arr,
+            std_arr,
+            vol_arr,
+            audit,
+        )
+
+
+# -----------------------------------------------------------------------------
+# PFLOTRAN run preparation/execution
+# -----------------------------------------------------------------------------
 
 def prepare_sample_run_dir(
     model_dir: Path,
@@ -507,236 +800,430 @@ def prepare_sample_run_dir(
     for fname in STATIC_FILES:
         src = model_dir / fname
         if not src.exists():
-            raise FileNotFoundError("Missing required input file: {}".format(src))
+            raise FileNotFoundError("Missing required static file: {}".format(src))
         link_or_copy(src, sample_dir / fname, copy_static)
 
     deck_src = model_dir / deck_template_name
-    if not deck_src.exists():
-        raise FileNotFoundError("Missing deck template: {}".format(deck_src))
-
-    deck_text = deck_src.read_text(encoding="utf-8")
+    text = deck_src.read_text(encoding="utf-8")
 
     for material in MATERIALS:
-        base_x, base_y, base_z = BASE_TENSORS[material]
-        base_scalar = base_x
-        target_k = k_map[material]
-        scale = target_k / base_scalar
-        new_x = base_x * scale
-        new_y = base_y * scale
-        new_z = base_z * scale
-        deck_text = replace_perm_tensor_in_block(deck_text, material, new_x, new_y, new_z)
+        _bx, _by, _bz = BASE_TENSORS[material]
+        scale = k_map[material] / _bx
+        text = replace_perm_tensor_in_block(
+            text,
+            material,
+            _bx * scale,
+            _by * scale,
+            _bz * scale,
+        )
 
-    write_text(sample_dir / "pflotran.in", deck_text)
+    # Use the deck stem explicitly so PFLOTRAN outputs have predictable names.
+    prefix = Path(deck_template_name).stem
+    (sample_dir / (prefix + ".in")).write_text(text, encoding="utf-8")
     return sample_dir
 
 
-def run_pflotran(run_dir: Path, pflotran_bin: str, mpiexec: str, nprocs: int) -> None:
-    """
-    Launch PFLOTRAN in the sample directory.
-    """
-    cmd = [mpiexec, "-n", str(nprocs), pflotran_bin]
+def run_pflotran(
+    run_dir: Path,
+    pflotran_bin: str,
+    mpiexec: str,
+    nprocs: int,
+    input_prefix: str,
+) -> None:
+    cmd = [
+        mpiexec,
+        "-n",
+        str(nprocs),
+        pflotran_bin,
+        "-input_prefix",
+        input_prefix,
+    ]
+
     env = os.environ.copy()
     env["OMP_NUM_THREADS"] = "1"
 
-    # Keep Anaconda available for Python packages, but remove it from LD_LIBRARY_PATH
-    # so PFLOTRAN/PETSc does not pick up the wrong libstdc++.
+    # Preserve the known-good PETSc/PFLOTRAN C++ runtime selection by removing
+    # Anaconda's libstdc++ from LD_LIBRARY_PATH when launching PFLOTRAN.
     ld = env.get("LD_LIBRARY_PATH", "")
     if ld:
-        parts = [p for p in ld.split(":") if "anaconda3" not in p]
-        env["LD_LIBRARY_PATH"] = ":".join(parts)
+        env["LD_LIBRARY_PATH"] = ":".join(
+            p for p in ld.split(":") if "anaconda3" not in p.lower()
+        )
 
-    subprocess.run(cmd, cwd=str(run_dir), check=True, env=env)
+    with (run_dir / "pflotran_stdout.log").open("w", encoding="utf-8") as out:
+        subprocess.run(
+            cmd,
+            cwd=str(run_dir),
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            check=True,
+            env=env,
+        )
 
 
-def read_sample_outputs(sample_dir: Path) -> Dict[str, np.ndarray]:
-    flow_h5 = sample_dir / "pflotran.h5"
-    geomech_h5 = sample_dir / "pflotran-geomech.h5"
+# -----------------------------------------------------------------------------
+# Resume support
+# -----------------------------------------------------------------------------
 
-    if not flow_h5.exists():
-        raise FileNotFoundError("Flow output missing: {}".format(flow_h5))
-    if not geomech_h5.exists():
-        raise FileNotFoundError("Geomechanics output missing: {}".format(geomech_h5))
+def load_completed_samples(out_dir: Path, n_samples: int) -> Dict[int, Dict[str, np.ndarray]]:
+    done: Dict[int, Dict[str, np.ndarray]] = {}
+    for i in range(1, n_samples + 1):
+        p = out_dir / "sample_outputs" / "sample_{:04d}.npz".format(i)
+        if not p.exists():
+            continue
+        try:
+            with np.load(str(p), allow_pickle=False) as z:
+                done[i] = {k: z[k] for k in z.files}
+        except Exception:
+            continue
+    return done
 
-    pressure_idx, strain_idx = load_observation_indices(sample_dir)
 
-    t_p, p_med, p_min, p_max = extract_pressure_series(flow_h5, pressure_idx)
-    t_s, s_med, ev = extract_geomech_series(geomech_h5, strain_idx)
-
-    return {
-        "pressure_times": t_p,
-        "pressure_median": p_med,
-        "pressure_min": p_min,
-        "pressure_max": p_max,
-        "strain_times": t_s,
-        "strain_median": s_med,
-        "volumetric_strain": ev,
-        "pressure_obs_count": np.asarray([len(pressure_idx)], dtype=int),
-        "strain_obs_count": np.asarray([len(strain_idx)], dtype=int),
-    }
-
+# -----------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------
 
 def main() -> int:
     args = parse_args()
 
+    if args.n_samples < 1:
+        raise ValueError("--n-samples must be >= 1")
+    if args.nprocs < 1:
+        raise ValueError("--nprocs must be >= 1")
+
     model_dir = Path(args.model_dir).resolve()
+    if args.out_dir is None:
+        args.out_dir = os.environ.get(
+            "SURROGATE_OUTDIR",
+            "./surrogate_dataset_v5",
+        )
     out_dir = Path(args.out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "runs").mkdir(parents=True, exist_ok=True)
+    (out_dir / "sample_outputs").mkdir(parents=True, exist_ok=True)
 
-    run_root = out_dir / "runs"
-    run_root.mkdir(parents=True, exist_ok=True)
+    deck_path = model_dir / args.deck_template
+    if not deck_path.exists():
+        raise FileNotFoundError("Deck template not found: {}".format(deck_path))
 
-    lhs_log10, names = generate_lhs_log10_samples(args.n_samples, LOG10_TARGET_BOUNDS, args.seed)
+    lhs_log10, names = generate_lhs_log10_samples(
+        args.n_samples,
+        LOG10_TARGET_BOUNDS,
+        args.seed,
+    )
 
-    k_log10_all = []
-    k_all = []
-    pressure_times_ref = None
-    strain_times_ref = None
-    pressure_median_all = []
-    pressure_min_all = []
-    pressure_max_all = []
-    strain_median_all = []
-    volumetric_strain_all = []
+    completed = (
+        load_completed_samples(out_dir, args.n_samples)
+        if args.resume
+        else {}
+    )
 
-    manifest_rows = []
-    failures = []
+    all_ok: List[Tuple[int, Dict[str, np.ndarray]]] = []
+    failures: List[Tuple[int, str]] = []
+    manifest_rows: List[Dict[str, object]] = []
+
+    deck_prefix = deck_path.stem
+
+    # Confirm that the current deck has the expected AVN87 sensitivity baseline.
+    deck_text = deck_path.read_text(encoding="utf-8")
+    avn87_match = re.search(
+        r"GEOMECHANICS_MATERIAL_PROPERTY\s+AVN87.*?YOUNGS_MODULUS\s+([0-9.eEdD+-]+).*?"
+        r"POISSONS_RATIO\s+([0-9.eEdD+-]+).*?BIOT_COEFFICIENT\s+([0-9.eEdD+-]+).*?END",
+        deck_text,
+        re.S,
+    )
+    if avn87_match:
+        avn87_E = float(avn87_match.group(1).replace("D", "E").replace("d", "e"))
+        avn87_nu = float(avn87_match.group(2).replace("D", "E").replace("d", "e"))
+        avn87_biot = float(avn87_match.group(3).replace("D", "E").replace("d", "e"))
+    else:
+        avn87_E = None
+        avn87_nu = None
+        avn87_biot = None
+
+    print("=" * 72)
+    print("North Avant V5 surrogate dataset generation")
+    print("=" * 72)
+    print("Model directory:", model_dir)
+    print("Deck template  :", args.deck_template)
+    print("Output directory:", out_dir)
+    print("Samples        :", args.n_samples)
+    print("Seed           :", args.seed)
+    print("MPI ranks/run  :", args.nprocs)
+    print("Injector cells : MATERIAL_ID == {}".format(INJECTION_MATERIAL_ID))
+    print("AVN87 E/nu/Biot : {}/{}/{}".format(avn87_E, avn87_nu, avn87_biot))
+    print()
 
     for i in range(args.n_samples):
-        sample_id = i + 1
+        sid = i + 1
         sample_log10 = lhs_log10[i]
-        k_map = {mat: float(10.0 ** sample_log10[j]) for j, mat in enumerate(names)}
+        k_map = {
+            m: float(10.0 ** sample_log10[j])
+            for j, m in enumerate(names)
+        }
+        sample_npz = out_dir / "sample_outputs" / "sample_{:04d}.npz".format(sid)
+
+        if sid in completed:
+            all_ok.append((sid, completed[sid]))
+            manifest_rows.append({
+                "sample_id": sid,
+                "status": "resumed_ok",
+                **{m + "_k": k_map[m] for m in names},
+                "injector_material_id": INJECTION_MATERIAL_ID,
+            })
+            print("[RESUME] sample {:04d}".format(sid), flush=True)
+            continue
 
         sample_dir = prepare_sample_run_dir(
-            model_dir=model_dir,
-            run_root=run_root,
-            sample_id=sample_id,
-            k_map=k_map,
-            deck_template_name=args.deck_template,
-            copy_static=args.copy_static,
+            model_dir,
+            out_dir / "runs",
+            sid,
+            k_map,
+            args.deck_template,
+            args.copy_static,
         )
 
         try:
-            run_pflotran(sample_dir, args.pflotran_bin, args.mpiexec, args.nprocs)
-            obs = read_sample_outputs(sample_dir)
+            run_pflotran(
+                sample_dir,
+                args.pflotran_bin,
+                args.mpiexec,
+                args.nprocs,
+                deck_prefix,
+            )
 
-            if pressure_times_ref is None:
-                pressure_times_ref = obs["pressure_times"]
-            elif not np.allclose(pressure_times_ref, obs["pressure_times"]):
-                raise RuntimeError("Pressure time grid changed across samples. Check deck output times.")
+            flow_h5 = sample_dir / (deck_prefix + ".h5")
+            geomech_h5 = sample_dir / (deck_prefix + "-geomech.h5")
 
-            if strain_times_ref is None:
-                strain_times_ref = obs["strain_times"]
-            elif not np.allclose(strain_times_ref, obs["strain_times"]):
-                raise RuntimeError("Geomechanics time grid changed across samples. Check deck output times.")
+            if not flow_h5.exists():
+                raise FileNotFoundError(
+                    "Flow HDF5 not found after PFLOTRAN run: {}".format(flow_h5)
+                )
+            if not geomech_h5.exists():
+                raise FileNotFoundError(
+                    "Geomechanics HDF5 not found after PFLOTRAN run: {}".format(geomech_h5)
+                )
 
-            k_log10_all.append(sample_log10)
-            k_all.append(np.array([k_map[m] for m in MATERIALS], dtype=float))
-            pressure_median_all.append(obs["pressure_median"])
-            pressure_min_all.append(obs["pressure_min"])
-            pressure_max_all.append(obs["pressure_max"])
-            strain_median_all.append(obs["strain_median"])
-            volumetric_strain_all.append(obs["volumetric_strain"])
+            mapping_path = sample_dir / "bartlesville_hec_lime_v5_interfaces_median.mapping"
+            injector_vset = sample_dir / PRESSURE_OBSERVATION_VSET
 
-            manifest_rows.append({
-                "sample_id": sample_id,
+            p_times, injector_flow, p_stats, pressure_audit = extract_pressure_delta_from_material_id(
+                flow_h5,
+                mapping_path if not args.skip_mapping_audit else None,
+                injector_vset if not args.skip_mapping_audit else None,
+                do_mapping_audit=not args.skip_mapping_audit,
+            )
+
+            station_paths = {
+                k: sample_dir / v
+                for k, v in STRAIN_OBSERVATION_VSETS.items()
+            }
+            s_times, s_mean, s_std, s_vol, strain_audit = extract_strain_series(
+                geomech_h5,
+                station_paths,
+            )
+
+            if not np.allclose(p_times, TARGET_TIMES_H, atol=TIME_TOL_H, rtol=0.0):
+                raise RuntimeError("Extracted flow time grid does not match requested waypoints")
+            if not np.allclose(s_times, TARGET_TIMES_H, atol=TIME_TOL_H, rtol=0.0):
+                raise RuntimeError("Extracted geomechanics time grid does not match requested waypoints")
+
+            payload: Dict[str, np.ndarray] = {
+                "sample_id": np.asarray([sid], dtype=np.int64),
+                "k_log10": sample_log10,
+                "k_values": np.asarray([k_map[m] for m in names], dtype=float),
+                "pressure_times_h": p_times,
+                "injector_flow_cell_ids_0based": injector_flow,
+                "injector_material_id": np.asarray([INJECTION_MATERIAL_ID], dtype=np.int64),
+                "injector_dp_mean_pa": p_stats["mean"],
+                "injector_dp_median_pa": p_stats["median"],
+                "injector_dp_p05_pa": p_stats["p05"],
+                "injector_dp_p95_pa": p_stats["p95"],
+                "injector_dp_min_pa": p_stats["min"],
+                "injector_dp_max_pa": p_stats["max"],
+                "injector_dp_std_pa": p_stats["std"],
+                "strain_times_h": s_times,
+                "strain_mean": s_mean,
+                "strain_std": s_std,
+                "volumetric_strain": s_vol,
+            }
+
+            np.savez_compressed(str(sample_npz), **payload)
+            all_ok.append((sid, payload))
+
+            manifest_row = {
+                "sample_id": sid,
                 "status": "ok",
-                "overburden_k": k_map["overburden"],
-                "bartlesville_sand_k": k_map["bartlesville_sand"],
-                "basal_layer_k": k_map["basal_layer"],
-                "underburden_k": k_map["underburden"],
-                "hec_k": k_map["hec"],
-                "run_dir": str(sample_dir),
-            })
-            print("[OK] sample {:04d}".format(sample_id))
+                **{m + "_k": k_map[m] for m in names},
+                "injector_material_id": INJECTION_MATERIAL_ID,
+                "injector_flow_cells": int(injector_flow.size),
+                "mapping_audit_sets_match": pressure_audit.get("sets_match", "not_run"),
+            }
+            manifest_rows.append(manifest_row)
+
+            (out_dir / "sample_outputs" / "sample_{:04d}_audit.json".format(sid)).write_text(
+                json.dumps(
+                    {
+                        "pressure_audit": pressure_audit,
+                        "strain_audit": strain_audit,
+                        "k_map": k_map,
+                    },
+                    indent=2,
+                    default=lambda x: x.tolist() if isinstance(x, np.ndarray) else x,
+                ),
+                encoding="utf-8",
+            )
+
+            print(
+                "[OK] sample {:04d} | injector flow cells={} | pressure max={:.6g} MPa".format(
+                    sid,
+                    injector_flow.size,
+                    np.max(p_stats["max"]) / 1.0e6,
+                ),
+                flush=True,
+            )
 
             if not args.keep_runs:
                 shutil.rmtree(str(sample_dir), ignore_errors=True)
 
-        except Exception as e:
-            failures.append((sample_id, str(e)))
+        except Exception as exc:
+            failures.append((sid, str(exc)))
             manifest_rows.append({
-                "sample_id": sample_id,
-                "status": "failed: {}".format(e),
-                "overburden_k": k_map.get("overburden", np.nan),
-                "bartlesville_sand_k": k_map.get("bartlesville_sand", np.nan),
-                "basal_layer_k": k_map.get("basal_layer", np.nan),
-                "underburden_k": k_map.get("underburden", np.nan),
-                "hec_k": k_map.get("hec", np.nan),
-                "run_dir": str(sample_dir),
+                "sample_id": sid,
+                "status": "failed: {}".format(exc),
+                **{m + "_k": k_map[m] for m in names},
+                "injector_material_id": INJECTION_MATERIAL_ID,
             })
-            print("[FAIL] sample {:04d}: {}".format(sample_id, e), file=sys.stderr)
+            print(
+                "[FAIL] sample {:04d}: {}".format(sid, exc),
+                file=sys.stderr,
+                flush=True,
+            )
+            # Failed run directories are preserved for diagnosis.
 
-    if not k_log10_all:
-        raise RuntimeError("No successful samples were generated.")
+    if not all_ok:
+        raise RuntimeError("No successful surrogate samples were generated")
 
-    k_log10_arr = np.asarray(k_log10_all, dtype=float)
-    k_arr = np.asarray(k_all, dtype=float)
-    pressure_median_arr = np.asarray(pressure_median_all, dtype=float)
-    pressure_min_arr = np.asarray(pressure_min_all, dtype=float)
-    pressure_max_arr = np.asarray(pressure_max_all, dtype=float)
-    strain_median_arr = np.asarray(strain_median_all, dtype=float)
-    volumetric_strain_arr = np.asarray(volumetric_strain_all, dtype=float)
+    # -------------------------------------------------------------------------
+    # Assemble master dataset
+    # -------------------------------------------------------------------------
+    all_ok.sort(key=lambda x: x[0])
+
+    k_log10 = np.vstack([d["k_log10"] for _, d in all_ok])
+    k_values = np.vstack([d["k_values"] for _, d in all_ok])
+    dp_mean = np.vstack([d["injector_dp_mean_pa"] for _, d in all_ok])
+    dp_median = np.vstack([d["injector_dp_median_pa"] for _, d in all_ok])
+    dp_p05 = np.vstack([d["injector_dp_p05_pa"] for _, d in all_ok])
+    dp_p95 = np.vstack([d["injector_dp_p95_pa"] for _, d in all_ok])
+    dp_min = np.vstack([d["injector_dp_min_pa"] for _, d in all_ok])
+    dp_max = np.vstack([d["injector_dp_max_pa"] for _, d in all_ok])
+    dp_std = np.vstack([d["injector_dp_std_pa"] for _, d in all_ok])
+    strain_mean = np.stack([d["strain_mean"] for _, d in all_ok], axis=0)
+    strain_std = np.stack([d["strain_std"] for _, d in all_ok], axis=0)
+    vol_strain = np.stack([d["volumetric_strain"] for _, d in all_ok], axis=0)
 
     np.savez_compressed(
-        out_dir / "dataset_master.npz",
-        material_names=np.array(MATERIALS, dtype="U"),
-        pressure_times=pressure_times_ref,
-        strain_times=strain_times_ref,
-        k_log10=k_log10_arr,
-        k_values=k_arr,
-        pressure_median=pressure_median_arr,
-        pressure_min=pressure_min_arr,
-        pressure_max=pressure_max_arr,
-        strain_median=strain_median_arr,
-        volumetric_strain=volumetric_strain_arr,
+        str(out_dir / "dataset_master.npz"),
+        material_names=np.asarray(names, dtype="U"),
+        station_names=np.asarray(list(STRAIN_OBSERVATION_VSETS.keys()), dtype="U"),
+        strain_component_names=np.asarray(STRAIN_COMPONENTS, dtype="U"),
+        target_times_h=TARGET_TIMES_H,
+        k_log10=k_log10,
+        k_values=k_values,
+        injector_material_id=np.asarray([INJECTION_MATERIAL_ID], dtype=np.int64),
+        injector_dp_mean_pa=dp_mean,
+        injector_dp_median_pa=dp_median,
+        injector_dp_p05_pa=dp_p05,
+        injector_dp_p95_pa=dp_p95,
+        injector_dp_min_pa=dp_min,
+        injector_dp_max_pa=dp_max,
+        injector_dp_std_pa=dp_std,
+        strain_mean=strain_mean,
+        strain_std=strain_std,
+        volumetric_strain=vol_strain,
     )
 
-    manifest_path = out_dir / "sample_manifest.csv"
-    with manifest_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=[
-                "sample_id", "status",
-                "overburden_k", "bartlesville_sand_k", "basal_layer_k", "underburden_k", "hec_k",
-                "run_dir",
-            ],
-        )
-        writer.writeheader()
-        writer.writerows(manifest_rows)
+    # Manifest
+    manifest = out_dir / "sample_manifest.csv"
+    fieldnames = [
+        "sample_id",
+        "status",
+        *[m + "_k" for m in names],
+        "injector_material_id",
+        "injector_flow_cells",
+        "mapping_audit_sets_match",
+    ]
+    by_id = {int(r["sample_id"]): r for r in manifest_rows}
 
-    meta = {
-        "workflow": "single_continuous_run_injection_to_shutin",
+    with manifest.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for sid in range(1, args.n_samples + 1):
+            row = by_id.get(sid, {"sample_id": sid, "status": "missing"})
+            w.writerow({k: row.get(k, "") for k in fieldnames})
+
+    metadata = {
+        "workflow": "North_Avant_V5_single_continuous_96h_two_way_surrogate_training",
         "deck_template": args.deck_template,
+        "deck_prefix": deck_prefix,
         "n_requested": args.n_samples,
-        "n_successful": int(len(k_log10_arr)),
-        "n_failed": int(len(failures)),
-        "failures": [{"sample_id": sid, "error": err} for sid, err in failures],
-        "materials": MATERIALS,
-        "pressure_times": pressure_times_ref.tolist() if pressure_times_ref is not None else None,
-        "strain_times": strain_times_ref.tolist() if strain_times_ref is not None else None,
-        "pressure_observation_vset": PRESSURE_OBSERVATION_VSET,
-        "strain_observation_vsets": STRAIN_OBSERVATION_VSETS,
-        "pressure_obs_count": int(load_vset_indices(model_dir / PRESSURE_OBSERVATION_VSET).size),
-        "strain_obs_count": int(np.unique(np.concatenate([load_vset_indices(model_dir / v) for v in STRAIN_OBSERVATION_VSETS])).size),
-        "base_tensor_values": {
-            m: list(BASE_TENSORS[m]) for m in MATERIALS
-        },
+        "n_successful": len(all_ok),
+        "n_failed": len(failures),
+        "seed": args.seed,
+        "nprocs_per_run": args.nprocs,
+        "materials_sampled": names,
         "log10_target_bounds": LOG10_TARGET_BOUNDS,
+        "target_times_h": TARGET_TIMES_H.tolist(),
+        "mechanical_baseline": {
+            "AVN87_youngs_modulus_pa": avn87_E,
+            "AVN87_poissons_ratio": avn87_nu,
+            "AVN87_biot_coefficient": avn87_biot,
+        },
+        "pressure_observation": {
+            "authoritative_definition": "flow HDF5 MATERIAL_ID == 6",
+            "material_name": "injection_borehole",
+            "material_id": INJECTION_MATERIAL_ID,
+            "quantity": "LIQUID_PRESSURE(t) - LIQUID_PRESSURE(0) over injection_borehole flow cells",
+            "statistics": ["mean", "median", "p05", "p95", "min", "max", "std"],
+            "mapping_audit": "independent mechanics-vset to flow mapping check; not the pressure-cell definition",
+        },
+        "strain_observation_vsets": STRAIN_OBSERVATION_VSETS,
+        "strain_component_names": list(STRAIN_COMPONENTS),
         "notes": [
-            "One coupled PFLOTRAN run per sample.",
-            "Injection is active from 0 to 19 h, then set to zero through 96 h.",
-            "The five sampled parameters are the layer permeabilities plus HEC.",
-            "Injection borehole is kept fixed as a source-sink tag region.",
-            "Current deck template: geomech_inj_rec.in.",
+            "Only five hydraulic permeability scalars are sampled.",
+            "Mechanical properties are inherited unchanged from the deck template.",
+            "AVN2, AVN31, and AVN87 remain separate observation stations.",
+            "Injector pressure uses MATERIAL_ID == 6 in the flow HDF5.",
+            "Pressure Delta-p uses the same injection cells at t=0 and all later times.",
+            "An independent mapping audit can verify the 84-cell expectation without defining the pressure observable.",
+            "Per-sample NPZ files make the dataset resumable after a walltime interruption.",
+        ],
+        "failures": [
+            {"sample_id": sid, "error": err}
+            for sid, err in failures
         ],
     }
-    (out_dir / "dataset_metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (out_dir / "dataset_metadata.json").write_text(
+        json.dumps(metadata, indent=2),
+        encoding="utf-8",
+    )
 
-    print("")
-    print("Done.")
-    print("Successful samples: {} / {}".format(len(k_log10_arr), args.n_samples))
-    print("Dataset: {}".format(out_dir / "dataset_master.npz"))
-    print("Manifest: {}".format(manifest_path))
-    print("Metadata: {}".format(out_dir / "dataset_metadata.json"))
+    print()
+    print("=" * 72)
+    print("Surrogate dataset generation complete")
+    print("=" * 72)
+    print("Successful samples: {} / {}".format(len(all_ok), args.n_samples))
+    print("Master dataset    : {}".format(out_dir / "dataset_master.npz"))
+    print("Manifest           : {}".format(manifest))
+    print("Metadata           : {}".format(out_dir / "dataset_metadata.json"))
+
+    if failures and not args.allow_failures:
+        print(
+            "Failures detected; rerun with --resume after diagnosing failed samples.",
+            file=sys.stderr,
+        )
+        return 2
+
     return 0
 
 
