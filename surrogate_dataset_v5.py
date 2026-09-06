@@ -177,7 +177,7 @@ TIME_TOL_H = 2.0e-5
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Generate North Avant V5 surrogate-training data."
+        description="Generate North Avant V5 surrogate-training data with automatic failed-sample retries."
     )
     p.add_argument("--model-dir", default=".")
     p.add_argument("--out-dir", default=None)
@@ -203,6 +203,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--copy-static", action="store_true")
     p.add_argument("--keep-runs", action="store_true")
     p.add_argument("--resume", action="store_true")
+    p.add_argument(
+        "--max-retries",
+        type=int,
+        default=2,
+        help="Number of additional attempts for a failed sample (default: 2).",
+    )
+    p.add_argument(
+        "--no-retry-failed",
+        action="store_true",
+        help="Disable automatic retries of failed samples.",
+    )
     p.add_argument("--allow-failures", action="store_true")
     p.add_argument(
         "--skip-mapping-audit",
@@ -883,6 +894,197 @@ def load_completed_samples(out_dir: Path, n_samples: int) -> Dict[int, Dict[str,
 # Main
 # -----------------------------------------------------------------------------
 
+def prepare_named_sample_run_dir(
+    model_dir: Path,
+    run_root: Path,
+    run_name: str,
+    k_map: Dict[str, float],
+    deck_template_name: str,
+    copy_static: bool,
+) -> Path:
+    """Prepare a clean named attempt directory for retries."""
+    sample_dir = run_root / run_name
+    if sample_dir.exists() or sample_dir.is_symlink():
+        safe_unlink(sample_dir)
+    sample_dir.mkdir(parents=True, exist_ok=True)
+
+    for fname in STATIC_FILES:
+        src = model_dir / fname
+        if not src.exists():
+            raise FileNotFoundError("Missing required static file: {}".format(src))
+        link_or_copy(src, sample_dir / fname, copy_static)
+
+    deck_src = model_dir / deck_template_name
+    text = deck_src.read_text(encoding="utf-8")
+
+    for material in MATERIALS:
+        _bx, _by, _bz = BASE_TENSORS[material]
+        scale = k_map[material] / _bx
+        text = replace_perm_tensor_in_block(
+            text,
+            material,
+            _bx * scale,
+            _by * scale,
+            _bz * scale,
+        )
+
+    prefix = Path(deck_template_name).stem
+    (sample_dir / (prefix + ".in")).write_text(text, encoding="utf-8")
+    return sample_dir
+
+
+def read_existing_manifest(path: Path) -> Dict[int, Dict[str, str]]:
+    """Read a prior manifest when resuming an interrupted/failed dataset run."""
+    rows: Dict[int, Dict[str, str]] = {}
+    if not path.exists():
+        return rows
+    try:
+        with path.open("r", newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if not row.get("sample_id"):
+                    continue
+                try:
+                    sid = int(row["sample_id"])
+                except ValueError:
+                    continue
+                rows[sid] = row
+    except Exception:
+        return {}
+    return rows
+
+
+def load_retry_history(path: Path) -> Dict[str, object]:
+    """Load retry history, tolerating the absence of a history file."""
+    if not path.exists():
+        return {"version": 1, "max_retries": 2, "samples": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"version": 1, "max_retries": 2, "samples": {}}
+    if not isinstance(data, dict):
+        return {"version": 1, "max_retries": 2, "samples": {}}
+    samples = data.get("samples")
+    if not isinstance(samples, dict):
+        data["samples"] = {}
+    return data
+
+
+def save_retry_history(path: Path, history: Dict[str, object]) -> None:
+    path.write_text(json.dumps(history, indent=2), encoding="utf-8")
+
+
+def history_entries(history: Dict[str, object], sid: int) -> List[Dict[str, object]]:
+    samples = history.setdefault("samples", {})
+    key = str(sid)
+    entries = samples.setdefault(key, [])
+    if not isinstance(entries, list):
+        entries = []
+        samples[key] = entries
+    return entries
+
+
+def write_checkpoint_manifest(
+    out_dir: Path,
+    lhs_log10: np.ndarray,
+    names: Sequence[str],
+    sample_status: Dict[int, Dict[str, object]],
+    n_samples: int,
+) -> None:
+    """Write a resumable manifest after each sample attempt."""
+    manifest = out_dir / "sample_manifest.csv"
+    fieldnames = [
+        "sample_id",
+        "status",
+        "attempts",
+        "last_error",
+        *[m + "_k" for m in names],
+        "injector_material_id",
+        "injector_flow_cells",
+        "mapping_audit_sets_match",
+    ]
+    with manifest.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for sid in range(1, n_samples + 1):
+            k_map = {
+                m: float(10.0 ** lhs_log10[sid - 1, j])
+                for j, m in enumerate(names)
+            }
+            rec = sample_status.get(sid, {})
+            row = {
+                "sample_id": sid,
+                "status": rec.get("status", "pending"),
+                "attempts": rec.get("attempts", 0),
+                "last_error": rec.get("last_error", ""),
+                **{m + "_k": k_map[m] for m in names},
+                "injector_material_id": INJECTION_MATERIAL_ID,
+                "injector_flow_cells": rec.get("injector_flow_cells", ""),
+                "mapping_audit_sets_match": rec.get("mapping_audit_sets_match", ""),
+            }
+            w.writerow(row)
+
+
+def get_audit_fields(out_dir: Path, sid: int) -> Dict[str, object]:
+    audit_path = out_dir / "sample_outputs" / "sample_{:04d}_audit.json".format(sid)
+    if not audit_path.exists():
+        return {}
+    try:
+        data = json.loads(audit_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    pressure = data.get("pressure_audit", {})
+    if not isinstance(pressure, dict):
+        pressure = {}
+    return {
+        "injector_flow_cells": pressure.get("injector_flow_cell_count", ""),
+        "mapping_audit_sets_match": pressure.get("sets_match", ""),
+    }
+
+
+def save_master_dataset(
+    out_dir: Path,
+    names: Sequence[str],
+    all_ok: List[Tuple[int, Dict[str, np.ndarray]]],
+) -> Path:
+    """Assemble the compact master NPZ from all successful samples."""
+    all_ok.sort(key=lambda x: x[0])
+    k_log10 = np.vstack([d["k_log10"] for _, d in all_ok])
+    k_values = np.vstack([d["k_values"] for _, d in all_ok])
+    dp_mean = np.vstack([d["injector_dp_mean_pa"] for _, d in all_ok])
+    dp_median = np.vstack([d["injector_dp_median_pa"] for _, d in all_ok])
+    dp_p05 = np.vstack([d["injector_dp_p05_pa"] for _, d in all_ok])
+    dp_p95 = np.vstack([d["injector_dp_p95_pa"] for _, d in all_ok])
+    dp_min = np.vstack([d["injector_dp_min_pa"] for _, d in all_ok])
+    dp_max = np.vstack([d["injector_dp_max_pa"] for _, d in all_ok])
+    dp_std = np.vstack([d["injector_dp_std_pa"] for _, d in all_ok])
+    strain_mean = np.stack([d["strain_mean"] for _, d in all_ok], axis=0)
+    strain_std = np.stack([d["strain_std"] for _, d in all_ok], axis=0)
+    vol_strain = np.stack([d["volumetric_strain"] for _, d in all_ok], axis=0)
+
+    path = out_dir / "dataset_master.npz"
+    np.savez_compressed(
+        str(path),
+        material_names=np.asarray(names, dtype="U"),
+        station_names=np.asarray(list(STRAIN_OBSERVATION_VSETS.keys()), dtype="U"),
+        strain_component_names=np.asarray(STRAIN_COMPONENTS, dtype="U"),
+        target_times_h=TARGET_TIMES_H,
+        k_log10=k_log10,
+        k_values=k_values,
+        injector_material_id=np.asarray([INJECTION_MATERIAL_ID], dtype=np.int64),
+        injector_dp_mean_pa=dp_mean,
+        injector_dp_median_pa=dp_median,
+        injector_dp_p05_pa=dp_p05,
+        injector_dp_p95_pa=dp_p95,
+        injector_dp_min_pa=dp_min,
+        injector_dp_max_pa=dp_max,
+        injector_dp_std_pa=dp_std,
+        strain_mean=strain_mean,
+        strain_std=strain_std,
+        volumetric_strain=vol_strain,
+    )
+    return path
+
+
 def main() -> int:
     args = parse_args()
 
@@ -890,6 +1092,8 @@ def main() -> int:
         raise ValueError("--n-samples must be >= 1")
     if args.nprocs < 1:
         raise ValueError("--nprocs must be >= 1")
+    if args.max_retries < 0:
+        raise ValueError("--max-retries must be >= 0")
 
     model_dir = Path(args.model_dir).resolve()
     if args.out_dir is None:
@@ -912,19 +1116,58 @@ def main() -> int:
         args.seed,
     )
 
-    completed = (
-        load_completed_samples(out_dir, args.n_samples)
-        if args.resume
-        else {}
-    )
+    sample_output_dir = out_dir / "sample_outputs"
+    manifest_path = out_dir / "sample_manifest.csv"
+    history_path = out_dir / "retry_history.json"
+    previous_manifest = read_existing_manifest(manifest_path)
+    history = load_retry_history(history_path)
+    history["version"] = 1
+    history["max_retries"] = args.max_retries
+    history["seed"] = args.seed
+    history["n_samples"] = args.n_samples
 
-    all_ok: List[Tuple[int, Dict[str, np.ndarray]]] = []
-    failures: List[Tuple[int, str]] = []
-    manifest_rows: List[Dict[str, object]] = []
+    completed = load_completed_samples(out_dir, args.n_samples)
+    sample_status: Dict[int, Dict[str, object]] = {}
+
+    for sid in range(1, args.n_samples + 1):
+        prev = previous_manifest.get(sid, {})
+        if sid in completed:
+            audit = get_audit_fields(out_dir, sid)
+            sample_status[sid] = {
+                "status": "ok",
+                "attempts": max(1, len(history_entries(history, sid))),
+                "last_error": "",
+                **audit,
+            }
+            continue
+
+        prev_status = str(prev.get("status", ""))
+        entries = history_entries(history, sid)
+
+        # Migrate a failed sample from the original generator into retry history.
+        if not entries and prev_status.startswith("failed:"):
+            entries.append({
+                "attempt": 1,
+                "phase": "initial_existing_run",
+                "status": "failed",
+                "error": prev_status[len("failed:"):].strip(),
+            })
+
+        if entries:
+            last = entries[-1]
+            sample_status[sid] = {
+                "status": "pending_retry" if last.get("status") == "failed" else str(last.get("status", "pending")),
+                "attempts": len(entries),
+                "last_error": str(last.get("error", "")) if last.get("status") == "failed" else "",
+            }
+        else:
+            sample_status[sid] = {
+                "status": "pending",
+                "attempts": 0,
+                "last_error": "",
+            }
 
     deck_prefix = deck_path.stem
-
-    # Confirm that the current deck has the expected AVN87 sensitivity baseline.
     deck_text = deck_path.read_text(encoding="utf-8")
     avn87_match = re.search(
         r"GEOMECHANICS_MATERIAL_PROPERTY\s+AVN87.*?YOUNGS_MODULUS\s+([0-9.eEdD+-]+).*?"
@@ -952,26 +1195,32 @@ def main() -> int:
     print("MPI ranks/run  :", args.nprocs)
     print("Injector cells : MATERIAL_ID == {}".format(INJECTION_MATERIAL_ID))
     print("AVN87 E/nu/Biot : {}/{}/{}".format(avn87_E, avn87_nu, avn87_biot))
+    print("Automatic retries:", "disabled" if args.no_retry_failed else "{} additional attempt(s)".format(args.max_retries))
     print()
+
+    # -------------------------------------------------------------------------
+    # PASS 1: original deterministic LHS experiment. Existing successful NPZs
+    # are reused when --resume is supplied. Existing failed samples are not
+    # rerun as a new initial attempt; they enter the retry stage below.
+    # -------------------------------------------------------------------------
+    initial_failures: List[int] = []
 
     for i in range(args.n_samples):
         sid = i + 1
         sample_log10 = lhs_log10[i]
-        k_map = {
-            m: float(10.0 ** sample_log10[j])
-            for j, m in enumerate(names)
-        }
-        sample_npz = out_dir / "sample_outputs" / "sample_{:04d}.npz".format(sid)
+        k_map = {m: float(10.0 ** sample_log10[j]) for j, m in enumerate(names)}
+        sample_npz = sample_output_dir / "sample_{:04d}.npz".format(sid)
 
         if sid in completed:
-            all_ok.append((sid, completed[sid]))
-            manifest_rows.append({
-                "sample_id": sid,
-                "status": "resumed_ok",
-                **{m + "_k": k_map[m] for m in names},
-                "injector_material_id": INJECTION_MATERIAL_ID,
-            })
             print("[RESUME] sample {:04d}".format(sid), flush=True)
+            continue
+
+        entries = history_entries(history, sid)
+        prev = previous_manifest.get(sid, {})
+        if entries or str(prev.get("status", "")).startswith("failed:"):
+            # This sample was already attempted in a previous invocation.
+            if entries and entries[-1].get("status") == "failed":
+                initial_failures.append(sid)
             continue
 
         sample_dir = prepare_sample_run_dir(
@@ -994,7 +1243,6 @@ def main() -> int:
 
             flow_h5 = sample_dir / (deck_prefix + ".h5")
             geomech_h5 = sample_dir / (deck_prefix + "-geomech.h5")
-
             if not flow_h5.exists():
                 raise FileNotFoundError(
                     "Flow HDF5 not found after PFLOTRAN run: {}".format(flow_h5)
@@ -1006,7 +1254,6 @@ def main() -> int:
 
             mapping_path = sample_dir / "bartlesville_hec_lime_v5_interfaces_median.mapping"
             injector_vset = sample_dir / PRESSURE_OBSERVATION_VSET
-
             p_times, injector_flow, p_stats, pressure_audit = extract_pressure_delta_from_material_id(
                 flow_h5,
                 mapping_path if not args.skip_mapping_audit else None,
@@ -1014,10 +1261,7 @@ def main() -> int:
                 do_mapping_audit=not args.skip_mapping_audit,
             )
 
-            station_paths = {
-                k: sample_dir / v
-                for k, v in STRAIN_OBSERVATION_VSETS.items()
-            }
+            station_paths = {k: sample_dir / v for k, v in STRAIN_OBSERVATION_VSETS.items()}
             s_times, s_mean, s_std, s_vol, strain_audit = extract_strain_series(
                 geomech_h5,
                 station_paths,
@@ -1047,130 +1291,273 @@ def main() -> int:
                 "strain_std": s_std,
                 "volumetric_strain": s_vol,
             }
-
             np.savez_compressed(str(sample_npz), **payload)
-            all_ok.append((sid, payload))
 
-            manifest_row = {
-                "sample_id": sid,
-                "status": "ok",
-                **{m + "_k": k_map[m] for m in names},
-                "injector_material_id": INJECTION_MATERIAL_ID,
-                "injector_flow_cells": int(injector_flow.size),
-                "mapping_audit_sets_match": pressure_audit.get("sets_match", "not_run"),
-            }
-            manifest_rows.append(manifest_row)
-
-            (out_dir / "sample_outputs" / "sample_{:04d}_audit.json".format(sid)).write_text(
+            (sample_output_dir / "sample_{:04d}_audit.json".format(sid)).write_text(
                 json.dumps(
-                    {
-                        "pressure_audit": pressure_audit,
-                        "strain_audit": strain_audit,
-                        "k_map": k_map,
-                    },
+                    {"pressure_audit": pressure_audit, "strain_audit": strain_audit, "k_map": k_map},
                     indent=2,
                     default=lambda x: x.tolist() if isinstance(x, np.ndarray) else x,
                 ),
                 encoding="utf-8",
             )
 
+            history_entries(history, sid).append({
+                "attempt": 1,
+                "phase": "initial",
+                "status": "ok",
+            })
+            sample_status[sid] = {
+                "status": "ok",
+                "attempts": 1,
+                "last_error": "",
+                "injector_flow_cells": int(injector_flow.size),
+                "mapping_audit_sets_match": pressure_audit.get("sets_match", "not_run"),
+            }
+            completed[sid] = payload
             print(
                 "[OK] sample {:04d} | injector flow cells={} | pressure max={:.6g} MPa".format(
-                    sid,
-                    injector_flow.size,
-                    np.max(p_stats["max"]) / 1.0e6,
+                    sid, injector_flow.size, np.max(p_stats["max"]) / 1.0e6
                 ),
                 flush=True,
             )
-
             if not args.keep_runs:
                 shutil.rmtree(str(sample_dir), ignore_errors=True)
-
         except Exception as exc:
-            failures.append((sid, str(exc)))
-            manifest_rows.append({
-                "sample_id": sid,
-                "status": "failed: {}".format(exc),
-                **{m + "_k": k_map[m] for m in names},
-                "injector_material_id": INJECTION_MATERIAL_ID,
+            error_text = str(exc)
+            history_entries(history, sid).append({
+                "attempt": 1,
+                "phase": "initial",
+                "status": "failed",
+                "error": error_text,
             })
-            print(
-                "[FAIL] sample {:04d}: {}".format(sid, exc),
-                file=sys.stderr,
-                flush=True,
-            )
-            # Failed run directories are preserved for diagnosis.
+            sample_status[sid] = {
+                "status": "failed",
+                "attempts": 1,
+                "last_error": error_text,
+            }
+            initial_failures.append(sid)
+            print("[FAIL] sample {:04d}: {}".format(sid, exc), file=sys.stderr, flush=True)
+            # Failed directories are preserved for diagnosis.
+        write_checkpoint_manifest(out_dir, lhs_log10, names, sample_status, args.n_samples)
+        save_retry_history(history_path, history)
 
+    # Existing failed samples from the previous 32-sample run enter the retry queue.
+    for sid in range(1, args.n_samples + 1):
+        if sid in completed:
+            continue
+        entries = history_entries(history, sid)
+        if entries and entries[-1].get("status") == "failed" and sid not in initial_failures:
+            initial_failures.append(sid)
+
+    initial_failures = sorted(set(initial_failures))
+    print()
+    print("Initial failed samples:", initial_failures if initial_failures else "none")
+
+    # -------------------------------------------------------------------------
+    # PASS 2/3: automatically retry every failed sample up to max_retries times.
+    # -------------------------------------------------------------------------
+    retry_failures = initial_failures[:]
+    if not args.no_retry_failed and args.max_retries > 0:
+        for retry_index in range(1, args.max_retries + 1):
+            if not retry_failures:
+                break
+            print()
+            print("=" * 72)
+            print("Retry pass {}/{}".format(retry_index, args.max_retries))
+            print("Samples:", retry_failures)
+            print("=" * 72)
+            next_failures: List[int] = []
+
+            for sid in retry_failures:
+                if sid in completed:
+                    continue
+
+                sample_log10 = lhs_log10[sid - 1]
+                k_map = {m: float(10.0 ** sample_log10[j]) for j, m in enumerate(names)}
+                entries = history_entries(history, sid)
+                attempt_no = len(entries) + 1
+                if attempt_no > args.max_retries + 1:
+                    next_failures.append(sid)
+                    continue
+
+                run_name = "sample_{:04d}_retry{:02d}".format(sid, retry_index)
+                try:
+                    sample_dir = prepare_named_sample_run_dir(
+                        model_dir,
+                        out_dir / "runs",
+                        run_name,
+                        k_map,
+                        args.deck_template,
+                        args.copy_static,
+                    )
+                    print(
+                        "[RETRY {}/{}] sample {:04d} (attempt {})".format(
+                            retry_index, args.max_retries, sid, attempt_no
+                        ),
+                        flush=True,
+                    )
+                    run_pflotran(
+                        sample_dir,
+                        args.pflotran_bin,
+                        args.mpiexec,
+                        args.nprocs,
+                        deck_prefix,
+                    )
+
+                    flow_h5 = sample_dir / (deck_prefix + ".h5")
+                    geomech_h5 = sample_dir / (deck_prefix + "-geomech.h5")
+                    if not flow_h5.exists():
+                        raise FileNotFoundError("Flow HDF5 not found after PFLOTRAN run: {}".format(flow_h5))
+                    if not geomech_h5.exists():
+                        raise FileNotFoundError("Geomechanics HDF5 not found after PFLOTRAN run: {}".format(geomech_h5))
+
+                    mapping_path = sample_dir / "bartlesville_hec_lime_v5_interfaces_median.mapping"
+                    injector_vset = sample_dir / PRESSURE_OBSERVATION_VSET
+                    p_times, injector_flow, p_stats, pressure_audit = extract_pressure_delta_from_material_id(
+                        flow_h5,
+                        mapping_path if not args.skip_mapping_audit else None,
+                        injector_vset if not args.skip_mapping_audit else None,
+                        do_mapping_audit=not args.skip_mapping_audit,
+                    )
+                    station_paths = {k: sample_dir / v for k, v in STRAIN_OBSERVATION_VSETS.items()}
+                    s_times, s_mean, s_std, s_vol, strain_audit = extract_strain_series(
+                        geomech_h5,
+                        station_paths,
+                    )
+
+                    if not np.allclose(p_times, TARGET_TIMES_H, atol=TIME_TOL_H, rtol=0.0):
+                        raise RuntimeError("Extracted flow time grid does not match requested waypoints")
+                    if not np.allclose(s_times, TARGET_TIMES_H, atol=TIME_TOL_H, rtol=0.0):
+                        raise RuntimeError("Extracted geomechanics time grid does not match requested waypoints")
+
+                    payload: Dict[str, np.ndarray] = {
+                        "sample_id": np.asarray([sid], dtype=np.int64),
+                        "k_log10": sample_log10,
+                        "k_values": np.asarray([k_map[m] for m in names], dtype=float),
+                        "pressure_times_h": p_times,
+                        "injector_flow_cell_ids_0based": injector_flow,
+                        "injector_material_id": np.asarray([INJECTION_MATERIAL_ID], dtype=np.int64),
+                        "injector_dp_mean_pa": p_stats["mean"],
+                        "injector_dp_median_pa": p_stats["median"],
+                        "injector_dp_p05_pa": p_stats["p05"],
+                        "injector_dp_p95_pa": p_stats["p95"],
+                        "injector_dp_min_pa": p_stats["min"],
+                        "injector_dp_max_pa": p_stats["max"],
+                        "injector_dp_std_pa": p_stats["std"],
+                        "strain_times_h": s_times,
+                        "strain_mean": s_mean,
+                        "strain_std": s_std,
+                        "volumetric_strain": s_vol,
+                    }
+                    np.savez_compressed(
+                        str(sample_output_dir / "sample_{:04d}.npz".format(sid)),
+                        **payload,
+                    )
+                    (sample_output_dir / "sample_{:04d}_audit.json".format(sid)).write_text(
+                        json.dumps(
+                            {"pressure_audit": pressure_audit, "strain_audit": strain_audit, "k_map": k_map},
+                            indent=2,
+                            default=lambda x: x.tolist() if isinstance(x, np.ndarray) else x,
+                        ),
+                        encoding="utf-8",
+                    )
+                    completed[sid] = payload
+                    history_entries(history, sid).append({
+                        "attempt": attempt_no,
+                        "phase": "retry_{}".format(retry_index),
+                        "status": "ok",
+                    })
+                    sample_status[sid] = {
+                        "status": "ok_after_retry_{}".format(retry_index),
+                        "attempts": attempt_no,
+                        "last_error": "",
+                        "injector_flow_cells": int(injector_flow.size),
+                        "mapping_audit_sets_match": pressure_audit.get("sets_match", "not_run"),
+                    }
+                    print(
+                        "[OK-RETRY] sample {:04d} | attempt={} | injector flow cells={} | pressure max={:.6g} MPa".format(
+                            sid, attempt_no, injector_flow.size, np.max(p_stats["max"]) / 1.0e6
+                        ),
+                        flush=True,
+                    )
+                    if not args.keep_runs:
+                        shutil.rmtree(str(sample_dir), ignore_errors=True)
+                except Exception as exc:
+                    error_text = str(exc)
+                    history_entries(history, sid).append({
+                        "attempt": attempt_no,
+                        "phase": "retry_{}".format(retry_index),
+                        "status": "failed",
+                        "error": error_text,
+                    })
+                    sample_status[sid] = {
+                        "status": "failed",
+                        "attempts": attempt_no,
+                        "last_error": error_text,
+                    }
+                    next_failures.append(sid)
+                    print(
+                        "[FAIL-RETRY] sample {:04d} attempt {}: {}".format(sid, attempt_no, exc),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    # Preserve failed retry directory for diagnosis.
+
+                write_checkpoint_manifest(out_dir, lhs_log10, names, sample_status, args.n_samples)
+                save_retry_history(history_path, history)
+
+            retry_failures = sorted(set(next_failures))
+
+    # -------------------------------------------------------------------------
+    # Assemble the final dataset from all successful per-sample NPZ files.
+    # -------------------------------------------------------------------------
+    all_ok = []
+    final_failed: List[int] = []
+    for sid in range(1, args.n_samples + 1):
+        sample_npz = sample_output_dir / "sample_{:04d}.npz".format(sid)
+        if sample_npz.exists():
+            try:
+                with np.load(str(sample_npz), allow_pickle=False) as z:
+                    all_ok.append((sid, {k: z[k] for k in z.files}))
+            except Exception as exc:
+                final_failed.append(sid)
+                sample_status[sid] = {
+                    "status": "failed_invalid_npz",
+                    "attempts": len(history_entries(history, sid)),
+                    "last_error": str(exc),
+                }
+        else:
+            final_failed.append(sid)
+
+    all_ok.sort(key=lambda x: x[0])
     if not all_ok:
         raise RuntimeError("No successful surrogate samples were generated")
 
-    # -------------------------------------------------------------------------
-    # Assemble master dataset
-    # -------------------------------------------------------------------------
-    all_ok.sort(key=lambda x: x[0])
+    master_path = save_master_dataset(out_dir, names, all_ok)
 
-    k_log10 = np.vstack([d["k_log10"] for _, d in all_ok])
-    k_values = np.vstack([d["k_values"] for _, d in all_ok])
-    dp_mean = np.vstack([d["injector_dp_mean_pa"] for _, d in all_ok])
-    dp_median = np.vstack([d["injector_dp_median_pa"] for _, d in all_ok])
-    dp_p05 = np.vstack([d["injector_dp_p05_pa"] for _, d in all_ok])
-    dp_p95 = np.vstack([d["injector_dp_p95_pa"] for _, d in all_ok])
-    dp_min = np.vstack([d["injector_dp_min_pa"] for _, d in all_ok])
-    dp_max = np.vstack([d["injector_dp_max_pa"] for _, d in all_ok])
-    dp_std = np.vstack([d["injector_dp_std_pa"] for _, d in all_ok])
-    strain_mean = np.stack([d["strain_mean"] for _, d in all_ok], axis=0)
-    strain_std = np.stack([d["strain_std"] for _, d in all_ok], axis=0)
-    vol_strain = np.stack([d["volumetric_strain"] for _, d in all_ok], axis=0)
-
-    np.savez_compressed(
-        str(out_dir / "dataset_master.npz"),
-        material_names=np.asarray(names, dtype="U"),
-        station_names=np.asarray(list(STRAIN_OBSERVATION_VSETS.keys()), dtype="U"),
-        strain_component_names=np.asarray(STRAIN_COMPONENTS, dtype="U"),
-        target_times_h=TARGET_TIMES_H,
-        k_log10=k_log10,
-        k_values=k_values,
-        injector_material_id=np.asarray([INJECTION_MATERIAL_ID], dtype=np.int64),
-        injector_dp_mean_pa=dp_mean,
-        injector_dp_median_pa=dp_median,
-        injector_dp_p05_pa=dp_p05,
-        injector_dp_p95_pa=dp_p95,
-        injector_dp_min_pa=dp_min,
-        injector_dp_max_pa=dp_max,
-        injector_dp_std_pa=dp_std,
-        strain_mean=strain_mean,
-        strain_std=strain_std,
-        volumetric_strain=vol_strain,
+    recovered = sum(
+        1
+        for sid, entries in ((sid, history_entries(history, sid)) for sid in range(1, args.n_samples + 1))
+        if sid not in final_failed and any(e.get("phase", "").startswith("retry_") and e.get("status") == "ok" for e in entries)
     )
 
-    # Manifest
+    write_checkpoint_manifest(out_dir, lhs_log10, names, sample_status, args.n_samples)
     manifest = out_dir / "sample_manifest.csv"
-    fieldnames = [
-        "sample_id",
-        "status",
-        *[m + "_k" for m in names],
-        "injector_material_id",
-        "injector_flow_cells",
-        "mapping_audit_sets_match",
-    ]
-    by_id = {int(r["sample_id"]): r for r in manifest_rows}
-
-    with manifest.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        for sid in range(1, args.n_samples + 1):
-            row = by_id.get(sid, {"sample_id": sid, "status": "missing"})
-            w.writerow({k: row.get(k, "") for k in fieldnames})
 
     metadata = {
-        "workflow": "North_Avant_V5_single_continuous_96h_two_way_surrogate_training",
+        "workflow": "North_Avant_V5_single_continuous_96h_two_way_surrogate_training_with_automatic_retries",
         "deck_template": args.deck_template,
         "deck_prefix": deck_prefix,
         "n_requested": args.n_samples,
         "n_successful": len(all_ok),
-        "n_failed": len(failures),
+        "n_failed_final": len(final_failed),
+        "n_initial_failures": len(initial_failures),
+        "n_recovered_after_retry": recovered,
         "seed": args.seed,
         "nprocs_per_run": args.nprocs,
+        "max_retries": args.max_retries,
+        "automatic_retry_enabled": not args.no_retry_failed,
         "materials_sampled": names,
         "log10_target_bounds": LOG10_TARGET_BOUNDS,
         "target_times_h": TARGET_TIMES_H.tolist(),
@@ -1180,7 +1567,7 @@ def main() -> int:
             "AVN87_biot_coefficient": avn87_biot,
         },
         "pressure_observation": {
-            "authoritative_definition": "flow HDF5 MATERIAL_ID == 6",
+            "authoritative_definition": "flow HDF5 MATERIAL_ID == {}".format(INJECTION_MATERIAL_ID),
             "material_name": "injection_borehole",
             "material_id": INJECTION_MATERIAL_ID,
             "quantity": "LIQUID_PRESSURE(t) - LIQUID_PRESSURE(0) over injection_borehole flow cells",
@@ -1189,6 +1576,12 @@ def main() -> int:
         },
         "strain_observation_vsets": STRAIN_OBSERVATION_VSETS,
         "strain_component_names": list(STRAIN_COMPONENTS),
+        "retry_policy": {
+            "description": "Each failed sample is retried up to max_retries additional times using the exact original LHS permeability vector.",
+            "max_retries": args.max_retries,
+            "attempts_total_max": args.max_retries + 1,
+            "failed_samples_final": final_failed,
+        },
         "notes": [
             "Only five hydraulic permeability scalars are sampled.",
             "Mechanical properties are inherited unchanged from the deck template.",
@@ -1197,29 +1590,33 @@ def main() -> int:
             "Pressure Delta-p uses the same injection cells at t=0 and all later times.",
             "An independent mapping audit can verify the 84-cell expectation without defining the pressure observable.",
             "Per-sample NPZ files make the dataset resumable after a walltime interruption.",
+            "Failed samples are retried automatically without changing their LHS parameter vector.",
+            "Failed attempt directories are preserved for diagnosis; successful attempt directories are removed unless --keep-runs is used.",
         ],
-        "failures": [
-            {"sample_id": sid, "error": err}
-            for sid, err in failures
-        ],
+        "retry_history_file": str(history_path),
     }
+
     (out_dir / "dataset_metadata.json").write_text(
         json.dumps(metadata, indent=2),
         encoding="utf-8",
     )
+    save_retry_history(history_path, history)
 
     print()
     print("=" * 72)
     print("Surrogate dataset generation complete")
     print("=" * 72)
-    print("Successful samples: {} / {}".format(len(all_ok), args.n_samples))
-    print("Master dataset    : {}".format(out_dir / "dataset_master.npz"))
+    print("Successful samples : {} / {}".format(len(all_ok), args.n_samples))
+    print("Final failed       : {}".format(final_failed if final_failed else "none"))
+    print("Recovered by retry : {}".format(recovered))
+    print("Master dataset     : {}".format(master_path))
     print("Manifest           : {}".format(manifest))
     print("Metadata           : {}".format(out_dir / "dataset_metadata.json"))
+    print("Retry history      : {}".format(history_path))
 
-    if failures and not args.allow_failures:
+    if final_failed and not args.allow_failures:
         print(
-            "Failures detected; rerun with --resume after diagnosing failed samples.",
+            "Failures remain after retry policy; rerun with --allow-failures only if a partial dataset is acceptable.",
             file=sys.stderr,
         )
         return 2
