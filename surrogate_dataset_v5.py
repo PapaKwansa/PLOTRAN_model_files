@@ -114,6 +114,7 @@ STATIC_FILES = [
     "basal_layer.vset",
     "underburden.vset",
     "hec.vset",
+    "shallow_limestone.vset",
     "injection_borehole.vset",
     "strainmeter_sensors.vset",
     "AVN2.vset",
