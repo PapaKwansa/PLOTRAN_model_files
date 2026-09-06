@@ -39,4 +39,4 @@ python surrogate_dataset_v5.py \
     --n-samples 32 \
     --seed 1234 \
     --resume \
-    --max-retries 2
+    --max-retries 5
