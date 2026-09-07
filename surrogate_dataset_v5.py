@@ -185,6 +185,44 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n-samples", type=int, default=32)
     p.add_argument("--seed", type=int, default=1234)
     p.add_argument(
+        "--existing-dataset",
+        default=None,
+        help=(
+            "Existing surrogate dataset directory used only when "
+            "designing an expansion. Its successful k_log10 vectors "
+            "are excluded from the new design."
+        ),
+    )
+
+    p.add_argument(
+        "--n-new-samples",
+        type=int,
+        default=None,
+        help=(
+            "Number of additional permeability realizations to design "
+            "when --existing-dataset is supplied."
+        ),
+    )
+
+    p.add_argument(
+        "--candidate-pool-size",
+        type=int,
+        default=8192,
+        help=(
+            "Number of candidate parameter vectors used for "
+            "space-filling expansion design."
+        ),
+    )
+
+    p.add_argument(
+        "--design-only",
+        action="store_true",
+        help=(
+            "Generate and save the expansion parameter design, "
+            "then exit without launching PFLOTRAN."
+        ),
+    )
+    p.add_argument(
         "--nprocs",
         type=int,
         default=int(os.environ.get("SLURM_NTASKS", "64")),
@@ -398,7 +436,762 @@ def generate_lhs_log10_samples(
     unit = generate_lhs_unit_samples(n_samples, len(names), seed)
     return low + unit * (high - low), names
 
+# -----------------------------------------------------------------------------
+# Incremental / expansion design
+# -----------------------------------------------------------------------------
 
+def load_existing_parameter_vectors(
+    existing_dataset_dir: Path,
+) -> np.ndarray:
+    """
+    Load successful log10 permeability vectors from an existing
+    surrogate dataset.
+
+    Expected source:
+        <existing_dataset_dir>/dataset_master.npz
+
+    Returns
+    -------
+    array, shape (n_successful, 5)
+    """
+
+    master = (
+        existing_dataset_dir
+        / "dataset_master.npz"
+    )
+
+    if not master.exists():
+        raise FileNotFoundError(
+            "Existing master dataset not found: {}".format(
+                master
+            )
+        )
+
+    with np.load(
+        str(master),
+        allow_pickle=False,
+    ) as z:
+
+        if "k_log10" not in z:
+            raise KeyError(
+                "Existing dataset does not contain k_log10"
+            )
+
+        existing = np.asarray(
+            z["k_log10"],
+            dtype=float,
+        )
+
+
+    if existing.ndim != 2:
+        raise RuntimeError(
+            "Existing k_log10 must be 2-D; got shape {}".format(
+                existing.shape
+            )
+        )
+
+    if existing.shape[1] != len(MATERIALS):
+        raise RuntimeError(
+            "Existing k_log10 has {} columns; expected {}".format(
+                existing.shape[1],
+                len(MATERIALS),
+            )
+        )
+
+    if not np.all(np.isfinite(existing)):
+        raise RuntimeError(
+            "Existing k_log10 contains non-finite values"
+        )
+
+    return existing
+
+# -----------------------------------------------------------------------------
+# Incremental / expansion design helpers
+# -----------------------------------------------------------------------------
+
+def parameter_bounds_arrays() -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Return lower and upper log10 permeability bounds in MATERIALS order.
+
+    These are the same bounds used by the original surrogate experiment.
+    Expansion sampling therefore adds information inside the SAME inversion
+    domain rather than changing the physical problem.
+    """
+
+    low = np.asarray(
+        [
+            LOG10_TARGET_BOUNDS[m][0]
+            for m in MATERIALS
+        ],
+        dtype=float,
+    )
+
+    high = np.asarray(
+        [
+            LOG10_TARGET_BOUNDS[m][1]
+            for m in MATERIALS
+        ],
+        dtype=float,
+    )
+
+    if np.any(high <= low):
+        raise RuntimeError(
+            "Invalid LOG10_TARGET_BOUNDS: every upper bound "
+            "must exceed its lower bound."
+        )
+
+    return low, high
+
+
+def normalize_parameter_vectors(
+    values: np.ndarray,
+) -> np.ndarray:
+    """
+    Normalize log10 permeability vectors to the unit 5-D cube.
+
+    Why this matters
+    ----------------
+    The five permeability parameters do not all span the same numerical
+    interval. Distance-based design should therefore operate in normalized
+    coordinates so every permeability dimension contributes comparably.
+
+    Original:
+        log10(k_j) in [lower_j, upper_j]
+
+    Normalized:
+        x_j = (log10(k_j) - lower_j) / (upper_j - lower_j)
+
+    Thus every parameter lies approximately in [0, 1].
+    """
+
+    values = np.asarray(
+        values,
+        dtype=float,
+    )
+
+    if values.ndim != 2:
+        raise ValueError(
+            "Parameter vectors must be a 2-D array; "
+            "got shape {}".format(values.shape)
+        )
+
+    if values.shape[1] != len(MATERIALS):
+        raise ValueError(
+            "Expected {} permeability columns; got {}.".format(
+                len(MATERIALS),
+                values.shape[1],
+            )
+        )
+
+    low, high = parameter_bounds_arrays()
+
+    return (
+        values - low
+    ) / (
+        high - low
+    )
+
+
+def validate_parameter_bounds(
+    values: np.ndarray,
+    label: str,
+    tolerance: float = 1.0e-12,
+) -> None:
+    """
+    Verify that every permeability vector lies inside the prescribed domain.
+
+    This is a safety check. Expansion sampling must never silently create
+    points outside the parameter range on which the inversion is intended
+    to operate.
+    """
+
+    values = np.asarray(
+        values,
+        dtype=float,
+    )
+
+    if values.ndim != 2:
+        raise RuntimeError(
+            "{} must be 2-D; got shape {}".format(
+                label,
+                values.shape,
+            )
+        )
+
+    if values.shape[1] != len(MATERIALS):
+        raise RuntimeError(
+            "{} has {} columns; expected {}.".format(
+                label,
+                values.shape[1],
+                len(MATERIALS),
+            )
+        )
+
+    if values.shape[0] == 0:
+        raise RuntimeError(
+            "{} contains zero parameter vectors.".format(
+                label
+            )
+        )
+
+    if not np.all(
+        np.isfinite(values)
+    ):
+        raise RuntimeError(
+            "{} contains non-finite permeability values.".format(
+                label
+            )
+        )
+
+    low, high = parameter_bounds_arrays()
+
+    below = (
+        values
+        < low[None, :] - tolerance
+    )
+
+    above = (
+        values
+        > high[None, :] + tolerance
+    )
+
+    bad = below | above
+
+    if np.any(bad):
+
+        bad_rows = np.flatnonzero(
+            np.any(
+                bad,
+                axis=1,
+            )
+        )
+
+        raise RuntimeError(
+            "{} contains parameter vectors outside "
+            "LOG10_TARGET_BOUNDS. Bad rows include: {}".format(
+                label,
+                bad_rows[:20].tolist(),
+            )
+        )
+
+
+def generate_candidate_pool(
+    n_candidates: int,
+    seed: int,
+) -> np.ndarray:
+    """
+    Generate a large candidate pool inside the original permeability bounds.
+
+    IMPORTANT:
+    These are NOT automatically run by PFLOTRAN.
+
+    The maximin algorithm below examines this large pool and chooses only the
+    requested number of new samples that best fill gaps around the existing
+    successful dataset.
+    """
+
+    if n_candidates < 1:
+        raise ValueError(
+            "--candidate-pool-size must be >= 1."
+        )
+
+    candidates, names = (
+        generate_lhs_log10_samples(
+            n_candidates,
+            LOG10_TARGET_BOUNDS,
+            seed,
+        )
+    )
+
+    if list(names) != list(MATERIALS):
+        raise RuntimeError(
+            "Candidate-pool material ordering does not match MATERIALS."
+        )
+
+    validate_parameter_bounds(
+        candidates,
+        "candidate pool",
+    )
+
+    return candidates
+
+
+def minimum_distances(
+    query: np.ndarray,
+    reference: np.ndarray,
+) -> np.ndarray:
+    """
+    Calculate each query point's minimum normalized distance to reference.
+
+    Distances are evaluated in normalized five-dimensional permeability
+    space, not directly in raw log10(k).
+
+    Chunking avoids constructing an unnecessarily large temporary array if
+    the candidate pool is increased later.
+    """
+
+    query = np.asarray(
+        query,
+        dtype=float,
+    )
+
+    reference = np.asarray(
+        reference,
+        dtype=float,
+    )
+
+    query_u = normalize_parameter_vectors(
+        query
+    )
+
+    reference_u = normalize_parameter_vectors(
+        reference
+    )
+
+    if reference_u.shape[0] == 0:
+        return np.full(
+            query_u.shape[0],
+            np.inf,
+            dtype=float,
+        )
+
+    result = np.empty(
+        query_u.shape[0],
+        dtype=float,
+    )
+
+    chunk_size = 2048
+
+    for start in range(
+        0,
+        query_u.shape[0],
+        chunk_size,
+    ):
+
+        stop = min(
+            start + chunk_size,
+            query_u.shape[0],
+        )
+
+        delta = (
+            query_u[start:stop, None, :]
+            - reference_u[None, :, :]
+        )
+
+        distance_squared = np.sum(
+            delta * delta,
+            axis=2,
+        )
+
+        result[start:stop] = np.sqrt(
+            np.min(
+                distance_squared,
+                axis=1,
+            )
+        )
+
+    return result
+
+
+def select_space_filling_expansion(
+    existing: np.ndarray,
+    candidates: np.ndarray,
+    n_new: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Select new permeability vectors using greedy maximin sampling.
+
+    Algorithm
+    ---------
+    1. Measure each candidate's distance from the nearest existing sample.
+    2. Choose the candidate with the largest nearest-neighbor distance.
+    3. Add that point to the effective training design.
+    4. Recalculate candidate distances.
+    5. Repeat until n_new points have been selected.
+
+    Therefore each selected point attempts to fill a poorly sampled region
+    of the current five-dimensional permeability domain.
+
+    This is stronger than merely checking for exact duplicates.
+    """
+
+    existing = np.asarray(
+        existing,
+        dtype=float,
+    )
+
+    candidates = np.asarray(
+        candidates,
+        dtype=float,
+    )
+
+    if n_new < 1:
+        raise ValueError(
+            "--n-new-samples must be >= 1."
+        )
+
+    if n_new > candidates.shape[0]:
+        raise ValueError(
+            "Requested {} new samples, but candidate pool "
+            "contains only {}.".format(
+                n_new,
+                candidates.shape[0],
+            )
+        )
+
+    validate_parameter_bounds(
+        existing,
+        "existing dataset",
+    )
+
+    validate_parameter_bounds(
+        candidates,
+        "candidate pool",
+    )
+
+    candidate_u = (
+        normalize_parameter_vectors(
+            candidates
+        )
+    )
+
+    # Initial nearest-neighbor distance from each candidate
+    # to the OLD successful training dataset.
+    min_dist = minimum_distances(
+        candidates,
+        existing,
+    )
+
+    available = np.ones(
+        candidates.shape[0],
+        dtype=bool,
+    )
+
+    selected_indices: List[int] = []
+    selected_distances: List[float] = []
+
+    for selection_number in range(
+        n_new
+    ):
+
+        score = min_dist.copy()
+
+        # Previously selected candidates cannot be selected again.
+        score[~available] = -np.inf
+
+        best = int(
+            np.argmax(score)
+        )
+
+        if not np.isfinite(
+            score[best]
+        ):
+            raise RuntimeError(
+                "Unable to select expansion point {} of {}."
+                .format(
+                    selection_number + 1,
+                    n_new,
+                )
+            )
+
+        selected_indices.append(
+            best
+        )
+
+        selected_distances.append(
+            float(score[best])
+        )
+
+        available[best] = False
+
+        # The newly selected point now counts as part of the design.
+        # Update every remaining candidate's nearest-neighbor distance.
+        delta = (
+            candidate_u
+            - candidate_u[best]
+        )
+
+        distance_to_new = np.sqrt(
+            np.sum(
+                delta * delta,
+                axis=1,
+            )
+        )
+
+        min_dist = np.minimum(
+            min_dist,
+            distance_to_new,
+        )
+
+    selected_indices_array = np.asarray(
+        selected_indices,
+        dtype=np.int64,
+    )
+
+    selected = candidates[
+        selected_indices_array
+    ]
+
+    selected_distances_array = np.asarray(
+        selected_distances,
+        dtype=float,
+    )
+
+    validate_parameter_bounds(
+        selected,
+        "selected expansion",
+    )
+
+    return (
+        selected,
+        selected_distances_array,
+    )
+
+
+def verify_expansion_design(
+    existing: np.ndarray,
+    new_points: np.ndarray,
+) -> Dict[str, float]:
+    """
+    Perform final QC on the proposed expansion design.
+
+    Checks:
+      * every point is inside the original parameter bounds;
+      * no new point duplicates an existing successful point;
+      * no two new points duplicate one another;
+      * nearest-neighbor spacing is reported for later audit.
+    """
+
+    existing = np.asarray(
+        existing,
+        dtype=float,
+    )
+
+    new_points = np.asarray(
+        new_points,
+        dtype=float,
+    )
+
+    validate_parameter_bounds(
+        existing,
+        "existing dataset",
+    )
+
+    validate_parameter_bounds(
+        new_points,
+        "new expansion",
+    )
+
+    nearest_existing = (
+        minimum_distances(
+            new_points,
+            existing,
+        )
+    )
+
+    duplicate_tolerance = 1.0e-10
+
+    duplicate_existing = np.flatnonzero(
+        nearest_existing
+        <= duplicate_tolerance
+    )
+
+    if duplicate_existing.size > 0:
+        raise RuntimeError(
+            "Expansion contains point(s) duplicating the existing "
+            "successful dataset. New-row indices: {}".format(
+                duplicate_existing.tolist()
+            )
+        )
+
+    if new_points.shape[0] > 1:
+
+        new_u = (
+            normalize_parameter_vectors(
+                new_points
+            )
+        )
+
+        delta = (
+            new_u[:, None, :]
+            - new_u[None, :, :]
+        )
+
+        distances = np.sqrt(
+            np.sum(
+                delta * delta,
+                axis=2,
+            )
+        )
+
+        np.fill_diagonal(
+            distances,
+            np.inf,
+        )
+
+        nearest_new = np.min(
+            distances,
+            axis=1,
+        )
+
+        duplicate_new = np.flatnonzero(
+            nearest_new
+            <= duplicate_tolerance
+        )
+
+        if duplicate_new.size > 0:
+            raise RuntimeError(
+                "Expansion contains duplicate new vectors. "
+                "Rows involved include: {}".format(
+                    duplicate_new.tolist()
+                )
+            )
+
+        minimum_new_to_new = float(
+            np.min(
+                nearest_new
+            )
+        )
+
+        mean_new_to_new = float(
+            np.mean(
+                nearest_new
+            )
+        )
+
+    else:
+
+        minimum_new_to_new = float(
+            "nan"
+        )
+
+        mean_new_to_new = float(
+            "nan"
+        )
+
+    return {
+        "minimum_new_to_existing_distance":
+            float(
+                np.min(
+                    nearest_existing
+                )
+            ),
+
+        "mean_new_to_existing_distance":
+            float(
+                np.mean(
+                    nearest_existing
+                )
+            ),
+
+        "minimum_new_to_new_distance":
+            minimum_new_to_new,
+
+        "mean_new_to_new_distance":
+            mean_new_to_new,
+    }
+
+
+def save_expansion_design(
+    path: Path,
+    new_points: np.ndarray,
+    selection_distances: np.ndarray,
+) -> None:
+    """
+    Save the exact expansion design before any PFLOTRAN simulations run.
+
+    Both log10(k) and physical permeability values are written so the design
+    is easy to inspect and remains permanently reproducible.
+    """
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    new_points = np.asarray(
+        new_points,
+        dtype=float,
+    )
+
+    selection_distances = np.asarray(
+        selection_distances,
+        dtype=float,
+    )
+
+    if (
+        new_points.shape[0]
+        != selection_distances.size
+    ):
+        raise RuntimeError(
+            "Expansion point count does not match "
+            "selection-distance count."
+        )
+
+    fieldnames = [
+        "expansion_sample_id",
+        *[
+            "log10_" + material
+            for material in MATERIALS
+        ],
+        *[
+            material + "_k"
+            for material in MATERIALS
+        ],
+        "selection_min_distance",
+    ]
+
+    with path.open(
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as f:
+
+        writer = csv.DictWriter(
+            f,
+            fieldnames=fieldnames,
+        )
+
+        writer.writeheader()
+
+        for i, row in enumerate(
+            new_points,
+            start=1,
+        ):
+
+            record: Dict[str, object] = {
+                "expansion_sample_id":
+                    i,
+
+                "selection_min_distance":
+                    float(
+                        selection_distances[
+                            i - 1
+                        ]
+                    ),
+            }
+
+            for j, material in enumerate(
+                MATERIALS
+            ):
+
+                log_value = float(
+                    row[j]
+                )
+
+                record[
+                    "log10_" + material
+                ] = log_value
+
+                record[
+                    material + "_k"
+                ] = float(
+                    10.0 ** log_value
+                )
+
+            writer.writerow(
+                record
+            )
 # -----------------------------------------------------------------------------
 # Deck editing
 # -----------------------------------------------------------------------------
@@ -1049,6 +1842,17 @@ def save_master_dataset(
 ) -> Path:
     """Assemble the compact master NPZ from all successful samples."""
     all_ok.sort(key=lambda x: x[0])
+        # Preserve the permanent row-to-sample mapping.
+    #
+    # This is important when some samples fail. Dataset row 7, for example,
+    # should not automatically be assumed to mean sample ID 7.
+    sample_ids = np.asarray(
+        [
+            sid
+            for sid, _ in all_ok
+        ],
+        dtype=np.int64,
+    )
     k_log10 = np.vstack([d["k_log10"] for _, d in all_ok])
     k_values = np.vstack([d["k_values"] for _, d in all_ok])
     dp_mean = np.vstack([d["injector_dp_mean_pa"] for _, d in all_ok])
@@ -1065,6 +1869,7 @@ def save_master_dataset(
     path = out_dir / "dataset_master.npz"
     np.savez_compressed(
         str(path),
+        sample_ids=sample_ids,
         material_names=np.asarray(names, dtype="U"),
         station_names=np.asarray(list(STRAIN_OBSERVATION_VSETS.keys()), dtype="U"),
         strain_component_names=np.asarray(STRAIN_COMPONENTS, dtype="U"),
@@ -1111,11 +1916,257 @@ def main() -> int:
     if not deck_path.exists():
         raise FileNotFoundError("Deck template not found: {}".format(deck_path))
 
-    lhs_log10, names = generate_lhs_log10_samples(
-        args.n_samples,
-        LOG10_TARGET_BOUNDS,
-        args.seed,
+        # -------------------------------------------------------------------------
+    # Parameter-design mode
+    #
+    # INITIAL MODE:
+    #     Preserve the original deterministic LHS workflow.
+    #
+    # EXPANSION MODE:
+    #     Read the existing successful permeability vectors and choose
+    #     additional space-filling points that complement them.
+    # -------------------------------------------------------------------------
+
+    names = MATERIALS[:]
+
+    expansion_mode = (
+        args.existing_dataset
+        is not None
     )
+
+    existing_log10: Optional[
+        np.ndarray
+    ] = None
+
+    design_qc: Optional[
+        Dict[str, float]
+    ] = None
+
+    design_path: Optional[
+        Path
+    ] = None
+
+
+    if expansion_mode:
+
+        if args.n_new_samples is None:
+            raise ValueError(
+                "--n-new-samples is required when "
+                "--existing-dataset is supplied."
+            )
+
+        if args.n_new_samples < 1:
+            raise ValueError(
+                "--n-new-samples must be >= 1."
+            )
+
+        if (
+            args.candidate_pool_size
+            < args.n_new_samples
+        ):
+            raise ValueError(
+                "--candidate-pool-size must be at least "
+                "as large as --n-new-samples."
+            )
+
+        existing_dataset_dir = Path(
+            args.existing_dataset
+        ).resolve()
+
+        if not existing_dataset_dir.exists():
+            raise FileNotFoundError(
+                "Existing dataset directory not found: {}".format(
+                    existing_dataset_dir
+                )
+            )
+
+        # Never allow expansion output to overwrite the immutable
+        # original dataset.
+        if existing_dataset_dir == out_dir:
+            raise ValueError(
+                "--existing-dataset and --out-dir must point "
+                "to different directories in expansion mode."
+            )
+
+        existing_log10 = (
+            load_existing_parameter_vectors(
+                existing_dataset_dir
+            )
+        )
+
+        validate_parameter_bounds(
+            existing_log10,
+            "existing successful dataset",
+        )
+
+        candidates = (
+            generate_candidate_pool(
+                args.candidate_pool_size,
+                args.seed,
+            )
+        )
+
+        (
+            lhs_log10,
+            selection_distances,
+        ) = (
+            select_space_filling_expansion(
+                existing_log10,
+                candidates,
+                args.n_new_samples,
+            )
+        )
+
+        design_qc = (
+            verify_expansion_design(
+                existing_log10,
+                lhs_log10,
+            )
+        )
+
+        # The remainder of the existing execution/retry code expects
+        # args.n_samples. In expansion mode it now means the number
+        # of NEW samples in this batch.
+        args.n_samples = int(
+            args.n_new_samples
+        )
+
+        design_path = (
+            out_dir
+            / "expansion_design.csv"
+        )
+
+        save_expansion_design(
+            design_path,
+            lhs_log10,
+            selection_distances,
+        )
+
+
+        print()
+        print("=" * 72)
+        print(
+            "NORTH AVANT SURROGATE EXPANSION DESIGN"
+        )
+        print("=" * 72)
+
+        print(
+            "Existing dataset      :",
+            existing_dataset_dir,
+        )
+
+        print(
+            "Existing successes    :",
+            existing_log10.shape[0],
+        )
+
+        print(
+            "New samples requested :",
+            args.n_samples,
+        )
+
+        print(
+            "Combined target       :",
+            existing_log10.shape[0]
+            + args.n_samples,
+        )
+
+        print(
+            "Candidate pool        :",
+            args.candidate_pool_size,
+        )
+
+        print(
+            "Seed                  :",
+            args.seed,
+        )
+
+        print(
+            "Min new -> existing distance : {:.6f}".format(
+                design_qc[
+                    "minimum_new_to_existing_distance"
+                ]
+            )
+        )
+
+        print(
+            "Mean new -> existing distance: {:.6f}".format(
+                design_qc[
+                    "mean_new_to_existing_distance"
+                ]
+            )
+        )
+
+        print(
+            "Min new -> new distance      : {:.6f}".format(
+                design_qc[
+                    "minimum_new_to_new_distance"
+                ]
+            )
+        )
+
+        print(
+            "Mean new -> new distance     : {:.6f}".format(
+                design_qc[
+                    "mean_new_to_new_distance"
+                ]
+            )
+        )
+
+        print(
+            "Frozen design CSV     :",
+            design_path,
+        )
+
+        print("=" * 72)
+        print()
+
+
+        if args.design_only:
+
+            print(
+                "--design-only requested."
+            )
+
+            print(
+                "Expansion design was generated and validated."
+            )
+
+            print(
+                "NO PFLOTRAN simulations were launched."
+            )
+
+            return 0
+
+
+    else:
+
+        # Protect against accidentally supplying expansion-only
+        # arguments without an existing dataset.
+        if args.n_new_samples is not None:
+            raise ValueError(
+                "--n-new-samples requires "
+                "--existing-dataset."
+            )
+
+        if args.design_only:
+            raise ValueError(
+                "--design-only requires "
+                "--existing-dataset."
+            )
+
+        lhs_log10, names = (
+            generate_lhs_log10_samples(
+                args.n_samples,
+                LOG10_TARGET_BOUNDS,
+                args.seed,
+            )
+        )
+
+        validate_parameter_bounds(
+            lhs_log10,
+            "initial LHS design",
+        )
 
     sample_output_dir = out_dir / "sample_outputs"
     manifest_path = out_dir / "sample_manifest.csv"
@@ -1126,7 +2177,29 @@ def main() -> int:
     history["max_retries"] = args.max_retries
     history["seed"] = args.seed
     history["n_samples"] = args.n_samples
+    history["sampling_mode"] = (
+        "space_filling_maximin_expansion"
+        if expansion_mode
+        else "latin_hypercube_initial"
+    )
 
+    history["existing_dataset"] = (
+        str(
+            Path(
+                args.existing_dataset
+            ).resolve()
+        )
+        if expansion_mode
+        else None
+    )
+
+    history["candidate_pool_size"] = (
+        int(
+            args.candidate_pool_size
+        )
+        if expansion_mode
+        else None
+    )
     completed = load_completed_samples(out_dir, args.n_samples)
     sample_status: Dict[int, Dict[str, object]] = {}
 
@@ -1200,7 +2273,12 @@ def main() -> int:
     print()
 
     # -------------------------------------------------------------------------
-    # PASS 1: original deterministic LHS experiment. Existing successful NPZs
+    # PASS 1: run the originally assigned parameter design.
+    # In initial mode this is the deterministic LHS.
+    # In expansion mode this is the frozen 5-D maximin expansion design.
+    #
+    # Existing successful NPZs are reused when --resume is supplied.
+    # -------------------------------------------------------------------------
     # are reused when --resume is supplied. Existing failed samples are not
     # rerun as a new initial attempt; they enter the retry stage below.
     # -------------------------------------------------------------------------
@@ -1556,6 +2634,74 @@ def main() -> int:
         "n_initial_failures": len(initial_failures),
         "n_recovered_after_retry": recovered,
         "seed": args.seed,
+                # -------------------------------------------------------------
+        # Sampling / expansion provenance
+        # -------------------------------------------------------------
+
+        "sampling_mode": (
+            "space_filling_maximin_expansion"
+            if expansion_mode
+            else "latin_hypercube_initial"
+        ),
+
+        "existing_dataset": (
+            str(
+                Path(
+                    args.existing_dataset
+                ).resolve()
+            )
+            if expansion_mode
+            else None
+        ),
+
+        "n_existing_successful": (
+            int(
+                existing_log10.shape[0]
+            )
+            if existing_log10 is not None
+            else 0
+        ),
+
+        "n_new_requested": (
+            int(args.n_samples)
+            if expansion_mode
+            else 0
+        ),
+
+        "combined_target_successful": (
+            int(
+                existing_log10.shape[0]
+                + args.n_samples
+            )
+            if existing_log10 is not None
+            else int(args.n_samples)
+        ),
+
+        "candidate_pool_size": (
+            int(
+                args.candidate_pool_size
+            )
+            if expansion_mode
+            else None
+        ),
+
+        "expansion_design_method": (
+            "greedy_maximin_in_normalized_5D_log10_permeability_space"
+            if expansion_mode
+            else None
+        ),
+
+        "expansion_design_file": (
+            str(design_path)
+            if design_path is not None
+            else None
+        ),
+
+        "expansion_design_qc": (
+            design_qc
+            if expansion_mode
+            else None
+        ),
         "nprocs_per_run": args.nprocs,
         "max_retries": args.max_retries,
         "automatic_retry_enabled": not args.no_retry_failed,
@@ -1578,7 +2724,12 @@ def main() -> int:
         "strain_observation_vsets": STRAIN_OBSERVATION_VSETS,
         "strain_component_names": list(STRAIN_COMPONENTS),
         "retry_policy": {
-            "description": "Each failed sample is retried up to max_retries additional times using the exact original LHS permeability vector.",
+                "description": (
+                "Each failed sample is retried up to max_retries "
+                "additional times using the exact originally assigned "
+                "permeability vector. The permeability vector is never "
+                "changed during retry."
+            ),
             "max_retries": args.max_retries,
             "attempts_total_max": args.max_retries + 1,
             "failed_samples_final": final_failed,
@@ -1591,7 +2742,7 @@ def main() -> int:
             "Pressure Delta-p uses the same injection cells at t=0 and all later times.",
             "An independent mapping audit can verify the 84-cell expectation without defining the pressure observable.",
             "Per-sample NPZ files make the dataset resumable after a walltime interruption.",
-            "Failed samples are retried automatically without changing their LHS parameter vector.",
+            "Failed samples are retried automatically without changing their assigned permeability vector.",
             "Failed attempt directories are preserved for diagnosis; successful attempt directories are removed unless --keep-runs is used.",
         ],
         "retry_history_file": str(history_path),
