@@ -1,0 +1,150 @@
+model:
+  name: V1_homogeneous_3D
+  purpose: COMSOL-PFLOTRAN cross-code verification benchmark
+  version: 1
+
+domain:
+  xmin_m: 0.0
+  xmax_m: 10000.0
+  ymin_m: 0.0
+  ymax_m: 10000.0
+  zmin_m: -1535.0
+  zmax_m: 0.0
+
+hydraulic:
+  porosity: 0.10
+
+  permeability_m2:
+    x: 4.9346165e-15
+    y: 4.9346165e-15
+    z: 4.9346165e-17
+
+fluid:
+  rho_ref_kg_m3: 1000.0
+  p_ref_pa: 101325.0
+  viscosity_pa_s: 1.0e-3
+  compressibility_pa_inv: 4.4e-10
+
+  gravity_m_s2:
+    x: 0.0
+    y: 0.0
+    z: -9.81
+
+  comsol_density_law:
+    type: exponential_constant_compressibility
+    expression: "rho_ref * exp(cf * (p - p_ref))"
+
+mechanics:
+  youngs_modulus_pa: 8.0e9
+  poissons_ratio: 0.25
+  biot_coefficient: 0.9
+  rock_density_kg_m3: 2500.0
+
+  gravity_m_s2:
+    x: 0.0
+    y: 0.0
+    z: 0.0
+
+injector:
+  center_m:
+    x: 5000.0
+    y: 5000.0
+    z: -529.75
+
+  radius_m: 0.75
+  height_m: 4.5
+
+  source_representation: finite_volume_cylinder
+
+hydraulic_boundary_conditions:
+  west: hydrostatic_pressure
+  east: hydrostatic_pressure
+  north: hydrostatic_pressure
+  south: hydrostatic_pressure
+  top: no_flow
+  bottom: no_flow
+
+mechanical_boundary_conditions:
+  west:
+    ux: 0.0
+
+  east:
+    ux: 0.0
+
+  north:
+    uy: 0.0
+
+  south:
+    uy: 0.0
+
+  bottom:
+    uz: 0.0
+
+  top: traction_free
+
+injection_schedule:
+  time_unit: hour
+  rate_unit: m3_per_s
+  interpolation: linear
+
+  values:
+    - [0.000, 0.000000000e+00]
+    - [0.450, 0.000000000e+00]
+    - [0.475, 1.464466094e-04]
+    - [0.500, 5.000000000e-04]
+    - [0.525, 8.535533906e-04]
+    - [0.550, 1.000000000e-03]
+
+    - [2.900, 1.000000000e-03]
+    - [2.950, 1.131801948e-03]
+    - [3.000, 1.450000000e-03]
+    - [3.050, 1.768198052e-03]
+    - [3.100, 1.900000000e-03]
+
+    - [18.950, 1.900000000e-03]
+    - [18.975, 1.621751442e-03]
+    - [19.000, 9.500000000e-04]
+    - [19.025, 2.782485579e-04]
+    - [19.050, 0.000000000e+00]
+
+    - [96.000, 0.000000000e+00]
+
+simulation:
+  final_time_h: 96.0
+
+  reference_state:
+    type: pre_injection_equilibrium
+    injection_enabled: false
+
+  transient:
+    injection_enabled: true
+
+comparison:
+  injector_point_m:
+    x: 5000.0
+    y: 5000.0
+    z: -529.75
+
+  radial_profile:
+    start_m:
+      x: 5000.0
+      y: 5000.0
+      z: -529.75
+
+    end_m:
+      x: 10000.0
+      y: 5000.0
+      z: -529.75
+
+    reference_time_h: 18.94
+
+comsol_preliminary_reference:
+  mesh_status: preliminary_not_mesh_converged
+
+  radial_pressure_18p94h:
+    peak_delta_p_mpa: 31.8745
+
+    attenuation_distance_m:
+      r50: 4.82
+      r10: 32.60
+      r1: 94.64
