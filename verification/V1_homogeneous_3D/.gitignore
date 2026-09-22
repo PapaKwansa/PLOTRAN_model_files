@@ -1,0 +1,16 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Generated V1 mesh products
+# Reproducible from config/v1_parameters.yaml and mesh/src/
+mesh/generated/
+
+# Runtime/result products
+results/*
+!results/.gitkeep
+
+# Temporary/editor files
+*~
+*.swp
+*.tmp
