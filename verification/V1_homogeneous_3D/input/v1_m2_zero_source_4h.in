@@ -1,0 +1,475 @@
+# ============================================================
+# V1 HOMOGENEOUS 3-D COMSOL-PFLOTRAN VERIFICATION
+# V1-A: ZERO-SOURCE HYDROSTATIC STABILITY TEST
+#
+# Purpose:
+#   Verify that the prescribed hydrostatic initial condition,
+#   hydraulic boundaries, homogeneous material properties, and
+#   zero-gravity mechanics state remain stable without injection.
+#
+# Mesh:
+#   Flow      : V1-M2 median dual
+#   Mechanics : V1-M2 canonical tetrahedral UGI
+#
+# Material IDs:
+#   1 = homogeneous matrix
+#   2 = finite injector/source region
+#
+# IMPORTANT:
+#   IDs 1 and 2 intentionally have identical physical properties.
+#   Material 2 exists only to identify the finite source region.
+# ============================================================
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  INPUT_RECORD_FILE
+
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+    SUBSURFACE_GEOMECHANICS geomech
+      OPTIONS
+        FLOW_COUPLING TWO_WAY_COUPLED
+      /
+    /
+  /
+END
+
+
+# ============================================================
+# FLOW
+# ============================================================
+
+SUBSURFACE
+
+GRID
+  TYPE UNSTRUCTURED_EXPLICIT v1_homogeneous_3d_m2_median_clean.uge
+END
+
+
+NUMERICAL_METHODS FLOW
+
+  TIMESTEPPER
+    INITIAL_TIMESTEP_SIZE 1.d-6 day
+
+    MAXIMUM_TIMESTEP_SIZE 1.d-2 hour at 0.d0 hour
+    MAXIMUM_TIMESTEP_SIZE 5.d-2 hour at 1.d-1 hour
+    MAXIMUM_TIMESTEP_SIZE 1.d-1 hour at 5.d-1 hour
+    MAXIMUM_TIMESTEP_SIZE 2.5d-1 hour at 1.d0 hour
+
+    PRESSURE_CHANGE_GOVERNOR 1.d5
+    SATURATION_CHANGE_GOVERNOR 2.d-2
+
+    TIMESTEP_REDUCTION_FACTOR 2.5d-1
+    TIMESTEP_MAXIMUM_GROWTH_FACTOR 1.2d0
+    NUM_STEPS_AFTER_TS_CUT 10
+
+    MAXIMUM_CONSECUTIVE_TS_CUTS 20
+    MAXIMUM_NUMBER_OF_TIMESTEPS 100000
+  /
+
+  NEWTON_SOLVER
+    SNES_TYPE NTR
+    DTOL 1.d3
+    MAXIMUM_NUMBER_OF_ITERATIONS 50
+  /
+
+  LINEAR_SOLVER
+    SOLVER BCGS
+    PRECONDITIONER ASM
+    MAXIMUM_NUMBER_OF_ITERATIONS 200
+    RTOL 1.d-8
+  /
+
+END
+
+
+TIME
+  FINAL_TIME 4.d0 hour
+END
+
+
+REFERENCE_PRESSURE 5.3d6
+
+
+# ============================================================
+# HOMOGENEOUS FLOW MATERIALS
+# ============================================================
+
+MATERIAL_PROPERTY homogeneous_matrix
+  ID 1
+  POROSITY 0.10d0
+  CHARACTERISTIC_CURVES default
+
+  PERMEABILITY
+    PERM_X 4.9346165d-15
+    PERM_Y 4.9346165d-15
+    PERM_Z 4.9346165d-17
+  /
+END
+
+
+MATERIAL_PROPERTY injector
+  ID 2
+  POROSITY 0.10d0
+  CHARACTERISTIC_CURVES default
+
+  # Intentionally identical to the homogeneous matrix.
+  PERMEABILITY
+    PERM_X 4.9346165d-15
+    PERM_Y 4.9346165d-15
+    PERM_Z 4.9346165d-17
+  /
+END
+
+
+CHARACTERISTIC_CURVES default
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    ALPHA 1.d-4
+    M 0.6d0
+    LIQUID_RESIDUAL_SATURATION 0.115d0
+  /
+
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.6d0
+    LIQUID_RESIDUAL_SATURATION 0.115d0
+    SMOOTH
+  /
+END
+
+
+# ============================================================
+# FLOW OUTPUT
+# ============================================================
+
+OUTPUT
+  ACKNOWLEDGE_VTK_FLAW
+  SCREEN PERIODIC 20
+  TIME_UNITS hour
+
+  SNAPSHOT_FILE
+    TIMES hour
+      1.d-2
+      5.d-2
+      1.d-1
+      2.5d-1
+      5.d-1
+      1.d0
+      2.d0
+      4.d0
+    FORMAT HDF5
+
+    VARIABLES
+      LIQUID_PRESSURE
+      MATERIAL_ID
+      POROSITY
+      PERMEABILITY_X
+      PERMEABILITY_Y
+      PERMEABILITY_Z
+    /
+  /
+
+  CONSERVATION_FILE
+    PERIODIC TIME 2.5d-1 hour
+  /
+END
+
+
+# ============================================================
+# FLOW REGIONS
+# ============================================================
+
+REGION All
+  COORDINATES
+    -1.d10 -1.d10 -1.d10
+     1.d10  1.d10  1.d10
+  /
+END
+
+
+REGION top
+  FILE boundary_ex/top.ex
+END
+
+REGION bottom
+  FILE boundary_ex/bottom.ex
+END
+
+REGION north
+  FILE boundary_ex/north.ex
+END
+
+REGION south
+  FILE boundary_ex/south.ex
+END
+
+REGION east
+  FILE boundary_ex/east.ex
+END
+
+REGION west
+  FILE boundary_ex/west.ex
+END
+
+
+REGION injector
+  FILE vsets/injector.vset
+END
+
+
+# ============================================================
+# FLOW CONDITIONS
+# ============================================================
+
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE HYDROSTATIC
+  /
+
+  DATUM 0.d0 0.d0 0.d0
+  LIQUID_PRESSURE 101325.d0
+
+  GRADIENT
+    LIQUID_PRESSURE 0.d0 0.d0 -9.81d3
+  /
+END
+
+
+FLOW_CONDITION far_field_pressure
+  TYPE
+    LIQUID_PRESSURE HYDROSTATIC
+  /
+
+  DATUM 0.d0 0.d0 0.d0
+  LIQUID_PRESSURE 101325.d0
+
+  GRADIENT
+    LIQUID_PRESSURE 0.d0 0.d0 -9.81d3
+  /
+END
+
+
+FLOW_CONDITION noflow
+  TYPE
+    LIQUID_FLUX NEUMANN
+  /
+
+  LIQUID_FLUX 0.d0
+END
+
+
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  REGION All
+END
+
+
+BOUNDARY_CONDITION west_bc
+  FLOW_CONDITION far_field_pressure
+  REGION west
+END
+
+BOUNDARY_CONDITION east_bc
+  FLOW_CONDITION far_field_pressure
+  REGION east
+END
+
+BOUNDARY_CONDITION north_bc
+  FLOW_CONDITION far_field_pressure
+  REGION north
+END
+
+BOUNDARY_CONDITION south_bc
+  FLOW_CONDITION far_field_pressure
+  REGION south
+END
+
+BOUNDARY_CONDITION top_bc
+  FLOW_CONDITION noflow
+  REGION top
+END
+
+BOUNDARY_CONDITION bottom_bc
+  FLOW_CONDITION noflow
+  REGION bottom
+END
+
+
+STRATA
+  FILE ./v1_homogeneous_3d_m2_material_ids.h5
+END
+
+
+END_SUBSURFACE
+
+
+# ============================================================
+# GEOMECHANICS
+# ============================================================
+
+GEOMECHANICS
+
+  GEOMECHANICS_MAPPING_FILE v1_homogeneous_3d_m2_median.mapping
+
+  GEOMECHANICS_GRID
+    TYPE UNSTRUCTURED v1_homogeneous_3d_m2.ugi
+
+    # V1 specifies zero mechanical gravity.
+    GRAVITY 0.d0 0.d0 0.d0
+  END
+
+
+  GEOMECHANICS_TIME
+    COUPLING_TIMESTEP_SIZE 5.d-3 hour
+  END
+
+
+# ============================================================
+# GEOMECHANICS REGIONS
+# ============================================================
+
+  GEOMECHANICS_REGION homogeneous_matrix
+    FILE vsets/homogeneous_matrix.vset
+  END
+
+  GEOMECHANICS_REGION injector
+    FILE vsets/injector.vset
+  END
+
+  GEOMECHANICS_REGION west
+    FILE vsets/west.vset
+  END
+
+  GEOMECHANICS_REGION east
+    FILE vsets/east.vset
+  END
+
+  GEOMECHANICS_REGION north
+    FILE vsets/north.vset
+  END
+
+  GEOMECHANICS_REGION south
+    FILE vsets/south.vset
+  END
+
+  GEOMECHANICS_REGION bottom
+    FILE vsets/bottom.vset
+  END
+
+  GEOMECHANICS_REGION top
+    FILE vsets/top.vset
+  END
+
+
+# ============================================================
+# HOMOGENEOUS GEOMECHANICS MATERIALS
+# ============================================================
+
+  GEOMECHANICS_MATERIAL_PROPERTY homogeneous_matrix
+    ID 1
+    ROCK_DENSITY 2500.d0
+    YOUNGS_MODULUS 8.0d9
+    POISSONS_RATIO 0.25d0
+    BIOT_COEFFICIENT 0.9d0
+  END
+
+
+  GEOMECHANICS_MATERIAL_PROPERTY injector
+    ID 2
+
+    # Intentionally identical to the homogeneous matrix.
+    ROCK_DENSITY 2500.d0
+    YOUNGS_MODULUS 8.0d9
+    POISSONS_RATIO 0.25d0
+    BIOT_COEFFICIENT 0.9d0
+  END
+
+
+  GEOMECHANICS_STRATA
+    GEOMECHANICS_REGION homogeneous_matrix
+    GEOMECHANICS_MATERIAL homogeneous_matrix
+  END
+
+  GEOMECHANICS_STRATA
+    GEOMECHANICS_REGION injector
+    GEOMECHANICS_MATERIAL injector
+  END
+
+
+# ============================================================
+# MECHANICAL BOUNDARY CONDITIONS
+# ============================================================
+
+  GEOMECHANICS_CONDITION west_roller
+    TYPE
+      DISPLACEMENT_X DIRICHLET
+    /
+    DISPLACEMENT_X 0.d0
+  END
+
+
+  GEOMECHANICS_CONDITION east_roller
+    TYPE
+      DISPLACEMENT_X DIRICHLET
+    /
+    DISPLACEMENT_X 0.d0
+  END
+
+
+  GEOMECHANICS_CONDITION north_roller
+    TYPE
+      DISPLACEMENT_Y DIRICHLET
+    /
+    DISPLACEMENT_Y 0.d0
+  END
+
+
+  GEOMECHANICS_CONDITION south_roller
+    TYPE
+      DISPLACEMENT_Y DIRICHLET
+    /
+    DISPLACEMENT_Y 0.d0
+  END
+
+
+  GEOMECHANICS_CONDITION bottom_fix
+    TYPE
+      DISPLACEMENT_Z DIRICHLET
+    /
+    DISPLACEMENT_Z 0.d0
+  END
+
+
+  GEOMECHANICS_BOUNDARY_CONDITION west_bc
+    GEOMECHANICS_CONDITION west_roller
+    GEOMECHANICS_REGION west
+  END
+
+  GEOMECHANICS_BOUNDARY_CONDITION east_bc
+    GEOMECHANICS_CONDITION east_roller
+    GEOMECHANICS_REGION east
+  END
+
+  GEOMECHANICS_BOUNDARY_CONDITION north_bc
+    GEOMECHANICS_CONDITION north_roller
+    GEOMECHANICS_REGION north
+  END
+
+  GEOMECHANICS_BOUNDARY_CONDITION south_bc
+    GEOMECHANICS_CONDITION south_roller
+    GEOMECHANICS_REGION south
+  END
+
+  GEOMECHANICS_BOUNDARY_CONDITION bottom_bc
+    GEOMECHANICS_CONDITION bottom_fix
+    GEOMECHANICS_REGION bottom
+  END
+
+
+  # No top mechanical BC -> traction-free top.
+  GEOMECHANICS_OUTPUT
+    FORMAT HDF5
+  END
+
+END_GEOMECHANICS

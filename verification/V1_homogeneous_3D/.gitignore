@@ -14,3 +14,22 @@ results/*
 *~
 *.swp
 *.tmp
+
+# Generated/frozen V1 runtime mesh artifacts
+# Reproducible from the validated V1 mesh workflow.
+runtime/*.ugi
+runtime/*.uge
+runtime/*.mapping
+runtime/*.h5
+runtime/boundary_ex/
+runtime/vsets/
+
+# Runtime copies of canonical input decks
+runtime/*.in
+
+# Local PFLOTRAN runtime outputs
+runtime/*.out
+runtime/*.rec
+runtime/*.log
+runtime/*-geomech*.xmf
+runtime/*-geomech*.h5
